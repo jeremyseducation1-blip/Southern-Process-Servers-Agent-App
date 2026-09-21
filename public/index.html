@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Return &amp; Affidavit Log</title>
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="top-bar">
+    <div class="wrap">
+      <span class="mark">§</span>
+      <h1>Return &amp; Affidavit Log</h1>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- STEP 0: Case info -->
+    <section class="card">
+      <h2>Case</h2>
+      <div class="grid-2">
+        <label>Court type
+          <input type="text" id="courtType" placeholder="General Sessions">
+        </label>
+        <label>County
+          <input type="text" id="county" placeholder="Davidson">
+        </label>
+        <label>State
+          <input type="text" id="state" value="Tennessee">
+        </label>
+        <label>Case No.
+          <input type="text" id="caseNo" placeholder="26GC8832">
+        </label>
+        <label>Document type
+          <select id="caseType">
+            <option value="">Select type</option>
+            <option value="Detainer">Detainer</option>
+            <option value="Letter">Letter</option>
+            <option value="Summons">Summons</option>
+            <option value="Civil Warrant">Civil Warrant</option>
+            <option value="Subpoena">Subpoena</option>
+          </select>
+        </label>
+        <label>Plaintiff
+          <input type="text" id="plaintiff" placeholder="River Trace Estates HOA">
+        </label>
+        <label>Defendant
+          <input type="text" id="defendant" placeholder="Edilia Tello">
+        </label>
+        <label>Additional defendants (comma-separated, if any)
+          <input type="text" id="extraDefendants" placeholder="e.g. John Tello">
+        </label>
+        <label>Service address
+          <input type="text" id="serviceAddress" placeholder="3013 Delta Queen Dr, Nashville, TN 37214">
+        </label>
+        <label>Attorney of record
+          <input type="text" id="attorney" value="Scott Weiss">
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="isAlias">
+          This is an alias summons
+        </label>
+      </div>
+    </section>
+
+    <!-- STEP 0.5: Intake scan -- fires the moment the paper is received,
+         before any attempts are made. Creates the case record everything
+         else (attempts, return, weekly inventory) hangs off of. -->
+    <section class="card">
+      <h2>Intake</h2>
+      <p class="hint">Enter the warrant/summons info as soon as you receive it. This creates the case record for your own tracking — Kevin isn't notified at this step.</p>
+      <button type="button" class="btn primary" id="sendIntakeBtn">Log intake</button>
+      <p class="status" id="intakeStatus"></p>
+    </section>
+
+    <!-- Case search -- find any case fast (defendant, plaintiff, case
+         number, or address) instead of digging through old photos when
+         a firm or Kevin calls asking about something from months back. -->
+    <section class="card">
+      <h2>Search Cases</h2>
+      <p class="hint">Search by defendant, plaintiff, case number, or address — matches everything you've ever logged, open or closed.</p>
+      <input type="text" id="caseSearchInput" placeholder="e.g. Tello, or 26GC8832, or Delta Queen Dr">
+      <div id="caseSearchResults"></div>
+    </section>
+
+    <!-- Weekly log -- Jeremy's own view of papers received, grouped by
+         the Monday of the week they came in. Read-only, not sent anywhere. -->
+    <section class="card">
+      <h2>My Weekly Log</h2>
+      <p class="hint">Every case you've logged, grouped by the week it was received.</p>
+      <button type="button" class="btn secondary" id="loadLogBtn">Load log</button>
+      <div id="weeklyLog"></div>
+    </section>
+
+    <!-- Monthly report -- clickable months, each opening a PDF listing
+         every case still open that was logged that month. -->
+    <section class="card">
+      <h2>Monthly Open-Case Report</h2>
+      <p class="hint">Tap a month to open a fresh PDF listing every case still open from that month.</p>
+      <button type="button" class="btn secondary" id="loadMonthReportBtn">Load months</button>
+      <div id="monthReportList"></div>
+    </section>
+
+    <!-- Weekly invoice -- clickable weeks, keyed by RETURN date (not
+         intake date), each opening a PDF of what was actually
+         returned/served that week. -->
+    <section class="card">
+      <h2>Weekly Invoice</h2>
+      <p class="hint">Tap a week to open a PDF of everything actually returned/served that week (regardless of when it was originally received).</p>
+      <button type="button" class="btn secondary" id="loadWeekInvoiceBtn">Load weeks</button>
+      <div id="weekInvoiceList"></div>
+    </section>
+
+    <!-- On-demand inventory PDF -- same content as the automatic Sunday
+         email to Kevin, but generated right now, no email. -->
+    <section class="card">
+      <h2>Inventory (On Demand)</h2>
+      <p class="hint">Generate a PDF of every case still open, right now -- same list Kevin gets automatically every Sunday, no email required.</p>
+      <button type="button" class="btn secondary" id="generateInventoryBtn">Generate inventory PDF</button>
+    </section>
+
+    <!-- Share links -- read-only view-only links for Kevin (sees
+         everything) and each law firm (sees only their own cases). No
+         login, just a token in the URL. -->
+    <section class="card">
+      <h2>Share Links</h2>
+      <p class="hint">Create a view-only link for Kevin (sees every case) or a specific attorney/firm (sees only their own cases). No login required — anyone with the link can view.</p>
+      <label>Scope <input type="text" id="shareScope" placeholder="ALL for Kevin, or e.g. Scott Weiss"></label>
+      <label>Label (optional) <input type="text" id="shareLabel" placeholder="Kevin Williams"></label>
+      <button type="button" class="btn secondary" id="createShareLinkBtn">Create link</button>
+      <p class="status" id="shareLinkStatus"></p>
+      <button type="button" class="btn secondary" id="loadShareLinksBtn">Show existing links</button>
+      <div id="shareLinksList"></div>
+    </section>
+
+    <!-- STEP 1: Return photo -- always available, independent of alias flow -->
+    <section class="card">
+      <h2>Return</h2>
+      <p class="hint">Scan the served/returned paper in Genius Scan, export it as a PDF, then upload that PDF here. It attaches to this case right away — no email gets sent to Kevin from this step. <strong>Exception:</strong> for an alias case with Scott Weiss as attorney, this return still gets bundled and sent automatically when you send the affidavit below.</p>
+
+      <div id="returnDefendantsPicker" hidden>
+        <p class="hint">We track papers, not just cases — this case has more than one defendant. Check off which one(s) this specific return covers. Only those get marked returned; the others stay open.</p>
+        <div id="returnDefendantsList"></div>
+      </div>
+
+      <label>Return outcome
+        <select id="returnOutcome">
+          <option value="Served">Served</option>
+          <option value="Return Not Found">Return Not Found</option>
+          <option value="Return Requested per Plaintiff">Return Requested per Plaintiff</option>
+        </select>
+      </label>
+
+      <label class="file-drop" id="returnDrop">
+        <input type="file" id="returnPdfInput" accept="application/pdf">
+        <span id="returnPdfLabel">Tap to upload the Genius Scan PDF</span>
+      </label>
+
+      <div id="returnPreviewStage" hidden>
+        <iframe id="returnPreviewFrame" title="Return PDF preview" style="width:100%;height:70vh;border:1px solid var(--rule);border-radius:4px;"></iframe>
+      </div>
+      <p class="status" id="returnStatus"></p>
+    </section>
+
+    <!-- STEP 2: Attempts -- only relevant for alias cases -->
+    <section class="card" id="attemptsCard" hidden>
+      <h2>Attempts</h2>
+      <p class="hint">Three attempts are required before a status can be selected. Dates can't be in the future.</p>
+
+      <div class="attempt" data-n="1">
+        <label>Attempt 1 date <input type="date" class="attempt-date"></label>
+        <label>Note <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+      </div>
+      <div class="attempt" data-n="2">
+        <label>Attempt 2 date <input type="date" class="attempt-date"></label>
+        <label>Note <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+      </div>
+      <div class="attempt" data-n="3">
+        <label>Attempt 3 date <input type="date" class="attempt-date"></label>
+        <label>Note <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+      </div>
+
+      <label>Status
+        <select id="statusSelect" disabled>
+          <option value="">Complete all 3 attempts first</option>
+          <option value="No response">No response</option>
+          <option value="Evading service">Evading service</option>
+          <option value="Vacant home">Vacant home</option>
+          <option value="Bad address">Bad address</option>
+        </select>
+      </label>
+
+      <div id="signatureBlock" hidden>
+        <h3>Signature</h3>
+        <p class="hint">Your saved signature and stamp will be applied automatically. Preview the affidavit first, then send it — with the return, if one's been uploaded — to Kevin.</p>
+        <div class="sig-preview">
+          <img id="savedSigPreview" alt="Saved signature">
+          <span id="noSigNote" hidden>No saved signature yet — <a href="#" id="goSetupSig">set one up</a>.</span>
+        </div>
+      </div>
+
+      <button type="button" class="btn secondary" id="previewAffidavitBtn" disabled>Preview affidavit</button>
+
+      <div id="affidavitPreviewStage" hidden>
+        <iframe id="affidavitPreviewFrame" title="Affidavit preview" style="width:100%;height:70vh;border:1px solid var(--rule);border-radius:4px;"></iframe>
+      </div>
+
+      <button type="button" class="btn primary" id="completeAffidavitBtn" disabled>Send affidavit to Kevin</button>
+      <p class="status" id="affidavitStatus"></p>
+    </section>
+
+    <!-- Signature setup, one-time -->
+    <section class="card" id="sigSetupCard">
+      <h2>Server signature &amp; stamp</h2>
+      <p class="hint">Sign once — it's saved on this device and reused on every affidavit.</p>
+      <canvas id="sigPad" width="600" height="180"></canvas>
+      <div class="sig-actions">
+        <button type="button" class="btn secondary" id="clearSig">Clear</button>
+        <button type="button" class="btn primary" id="saveSig">Save signature</button>
+      </div>
+      <div class="grid-2">
+        <label>Server name <input type="text" id="serverName" placeholder="Jeremy Williams"></label>
+        <label>Server phone <input type="text" id="serverPhone" placeholder="615-479-1334"></label>
+        <label>PO Box <input type="text" id="serverBox" placeholder="PO Box 292997"></label>
+        <label>City/State/ZIP <input type="text" id="serverCityState" placeholder="Nashville, TN 37229"></label>
+      </div>
+    </section>
+
+    <p style="text-align:center;font-size:.75rem;color:#999;margin-top:1rem;">Build: 2026-09-09 — return/affidavit PDF conversion, search, share links</p>
+
+  </main>
+
+  <script src="/js/signature-pad.js"></script>
+  <script src="/js/app.js"></script>
+</body>
+</html>

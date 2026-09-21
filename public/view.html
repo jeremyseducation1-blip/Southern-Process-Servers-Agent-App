@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Case Status — Return &amp; Affidavit Log</title>
+<link rel="stylesheet" href="css/style.css">
+<style>
+  .case-row{
+    padding:.8rem 0;
+    border-bottom:1px solid var(--rule);
+  }
+  .case-row:last-child{ border-bottom:none; }
+  .case-style{ font-weight:bold; }
+  .case-meta{ font-size:.85rem; color:#555; margin-top:.2rem; }
+  .status-pill{
+    display:inline-block;
+    padding:.1rem .6rem;
+    border-radius:3px;
+    font-size:.78rem;
+    border:1px solid var(--rule);
+    background:#fff;
+    margin-top:.3rem;
+  }
+  .filters{
+    display:flex;
+    flex-direction:column;
+    gap:.5rem;
+    margin-bottom:1rem;
+  }
+  .filters label{
+    display:flex;
+    flex-direction:column;
+    font-size:.85rem;
+    gap:.2rem;
+  }
+</style>
+</head>
+<body>
+  <main class="wrap">
+    <section class="card">
+      <h1 id="pageTitle">Case Status</h1>
+      <p class="hint" id="pageSubtitle">Loading…</p>
+
+      <div class="filters">
+        <label>Search (defendant, plaintiff, attorney, or address)
+          <input type="text" id="searchInput" placeholder="e.g. Tello, or Delta Queen Dr">
+        </label>
+        <label>Logged on this date
+          <input type="date" id="dateFilter">
+        </label>
+      </div>
+
+      <div id="caseList"></div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const titleEl = document.getElementById('pageTitle');
+      const subtitleEl = document.getElementById('pageSubtitle');
+      const listEl = document.getElementById('caseList');
+      const searchInput = document.getElementById('searchInput');
+      const dateFilter = document.getElementById('dateFilter');
+
+      if (!token) {
+        subtitleEl.textContent = 'Missing link token — check the URL you were given.';
+        return;
+      }
+
+      let allCases = [];
+
+      function renderCases(cases) {
+        if (!cases.length) {
+          listEl.innerHTML = '<p class="hint">No matching cases.</p>';
+          return;
+        }
+        listEl.innerHTML = cases
+          .map((c) => {
+            const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
+            let statusLabel;
+            if (c.status === 'closed') statusLabel = c.returnOutcome || 'Closed';
+            else if (c.returnSent) statusLabel = 'Returned — affidavit pending';
+            else statusLabel = 'Open';
+            const intake = c.intakeDate ? new Date(c.intakeDate).toLocaleDateString('en-US') : '';
+            return `
+              <div class="case-row">
+                <div class="case-style">${style}</div>
+                <div class="case-meta">Case No. ${c.caseNo || 'N/A'} — ${c.attorney || ''}${c.caseType ? ' — ' + c.caseType : ''}</div>
+                <div class="case-meta">${c.serviceAddress || ''}</div>
+                <div class="case-meta">Logged ${intake}</div>
+                <span class="status-pill">${statusLabel}${c.returnDate ? ' · Returned ' + c.returnDate : ''}</span>
+              </div>`;
+          })
+          .join('');
+      }
+
+      function applyFilters() {
+        const query = searchInput.value.trim().toLowerCase();
+        const dateVal = dateFilter.value; // YYYY-MM-DD or ''
+
+        const filtered = allCases.filter((c) => {
+          if (dateVal) {
+            const caseDate = c.intakeDate ? new Date(c.intakeDate).toISOString().slice(0, 10) : null;
+            if (caseDate !== dateVal) return false;
+          }
+          if (query) {
+            const haystack = [c.defendant, c.plaintiff, c.attorney, c.serviceAddress, ...(c.defendants || []).map((d) => d.name)]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase();
+            if (!haystack.includes(query)) return false;
+          }
+          return true;
+        });
+
+        subtitleEl.textContent = `${filtered.length} case${filtered.length === 1 ? '' : 's'} shown (of ${allCases.length} total).`;
+        renderCases(filtered);
+      }
+
+      searchInput.addEventListener('input', applyFilters);
+      dateFilter.addEventListener('change', applyFilters);
+
+      fetch('/.netlify/functions/view-cases?token=' + encodeURIComponent(token))
+        .then(async (res) => {
+          if (!res.ok) throw new Error(await res.text());
+          return res.json();
+        })
+        .then(({ label, cases }) => {
+          titleEl.textContent = label ? `Case Status — ${label}` : 'Case Status';
+          allCases = cases || [];
+          if (!allCases.length) {
+            subtitleEl.textContent = 'No cases on file yet.';
+            return;
+          }
+          subtitleEl.textContent = `${allCases.length} case${allCases.length === 1 ? '' : 's'} on file.`;
+          renderCases(allCases);
+        })
+        .catch((err) => {
+          subtitleEl.textContent = 'Could not load cases. (' + err.message + ')';
+        });
+    })();
+  </script>
+</body>
+</html>

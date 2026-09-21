@@ -1,0 +1,12 @@
+{
+  "name": "return-affidavit-log",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "@netlify/functions": "^2.8.2",
+    "@supabase/supabase-js": "^2.116.0",
+    "googleapis": "^140.0.1",
+    "pdf-lib": "^1.17.1"
+  }
+}

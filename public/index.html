@@ -181,7 +181,12 @@
         </select>
       </label>
       <button type="button" class="btn secondary" id="refreshAttemptCasesBtn">Refresh case list</button>
-      <p class="hint">This is what the attempt photos attach to — not whatever's typed in the Case section above. Pick the right case here before taking a photo, especially if you're logging attempts for several cases in one sitting.</p>
+
+      <p class="hint">Or type it in directly instead of picking from the list — case number and defendant name, exactly as they were logged at intake:</p>
+      <label>Case No. <input type="text" id="attemptCaseNoManual" placeholder="26GC8832"></label>
+      <label>Defendant <input type="text" id="attemptDefendantManual" placeholder="Edilia Tello"></label>
+
+      <p class="hint">Whichever one you use last (dropdown or typed) is what the attempt photos attach to — not whatever's in the Case section above. Set this before taking a photo, especially if you're logging attempts for several cases in one sitting.</p>
 
       <div class="attempt" data-n="1">
         <label>Attempt 1 date <input type="date" class="attempt-date"></label>

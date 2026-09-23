@@ -1000,12 +1000,38 @@
   // ---------- Attempt photos: primary evidence, required for each attempt ----------
   const attemptPhotoSaved = { 1: false, 2: false, 3: false };
 
-  // Which case attempt photos attach to -- an explicit dropdown, not
-  // whatever happens to be typed in the Case section, since Jeremy logs
-  // attempts for several cases in one sitting and the Case fields drift.
+  // Which case attempt photos attach to -- either the dropdown or typed
+  // manually, whichever was touched last. Not whatever happens to be in
+  // the Case section, since Jeremy logs attempts for several cases in
+  // one sitting and those fields drift.
   const attemptCaseSelect = $('#attemptCaseSelect');
   const refreshAttemptCasesBtn = $('#refreshAttemptCasesBtn');
+  const attemptCaseNoManual = $('#attemptCaseNoManual');
+  const attemptDefendantManual = $('#attemptDefendantManual');
   let openCasesById = {};
+  let attemptCaseSource = null; // 'dropdown' | 'manual'
+
+  attemptCaseSelect.addEventListener('change', () => {
+    if (attemptCaseSelect.value) attemptCaseSource = 'dropdown';
+  });
+  [attemptCaseNoManual, attemptDefendantManual].forEach((el) => {
+    el.addEventListener('input', () => {
+      attemptCaseSource = 'manual';
+    });
+  });
+
+  // Resolves { caseNo, defendant } from whichever source was used last.
+  function resolveAttemptCase() {
+    if (attemptCaseSource === 'manual') {
+      const caseNo = attemptCaseNoManual.value.trim();
+      const defendant = attemptDefendantManual.value.trim();
+      if (!caseNo || !defendant) return null;
+      return { caseNo, defendant };
+    }
+    const selected = openCasesById[attemptCaseSelect.value];
+    if (!selected) return null;
+    return { caseNo: selected.caseNo, defendant: selected.defendant };
+  }
 
   async function loadOpenCasesForAttempts() {
     attemptCaseSelect.innerHTML = '<option value="">Loading open cases…</option>';
@@ -1048,9 +1074,9 @@
       const file = photoInput.files[0];
       if (!file) return;
 
-      const selectedCase = openCasesById[attemptCaseSelect.value];
+      const selectedCase = resolveAttemptCase();
       if (!selectedCase) {
-        photoStatus.textContent = 'Pick which case this attempt is for (above) before taking the photo.';
+        photoStatus.textContent = 'Pick a case from the dropdown, or type in the case number and defendant (above), before taking the photo.';
         photoStatus.className = 'status err';
         photoInput.value = '';
         return;

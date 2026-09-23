@@ -322,3 +322,13 @@ textarea{resize:vertical;}
   font-size:.82rem;
   padding:.1rem 0;
 }
+
+.case-notes{
+  margin-top:.4rem;
+  padding:.4rem .6rem;
+  background:#fff8e1;
+  border:1px solid #e6d18a;
+  border-radius:4px;
+  font-size:.85rem;
+  white-space:pre-wrap;
+}

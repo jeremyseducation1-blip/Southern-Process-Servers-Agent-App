@@ -60,6 +60,7 @@ exports.handler = async (event) => {
         ? caseInfo.defendants
         : [{ name: caseInfo.defendant || '', served: false }],
       serviceAddress: caseInfo.serviceAddress || '',
+      notes: caseInfo.notes || '',
       attorney,
       isAlias,
       needsAffidavitTracking,

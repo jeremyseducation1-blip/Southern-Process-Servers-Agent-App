@@ -19,7 +19,7 @@ exports.handler = async (event) => {
     // is left alone here (it's just a label now, not the lookup key, but
     // changing it wouldn't reflect in the row's id/storage paths, so it's
     // simplest to keep it fixed and log a new paper if it was truly wrong).
-    const editable = ['courtType', 'county', 'state', 'caseType', 'plaintiff', 'defendant', 'defendants', 'serviceAddress', 'attorney', 'isAlias'];
+    const editable = ['courtType', 'county', 'state', 'caseType', 'plaintiff', 'defendant', 'defendants', 'serviceAddress', 'attorney', 'isAlias', 'notes'];
     for (const key of editable) {
       if (Object.prototype.hasOwnProperty.call(fields, key)) {
         existing[key] = fields[key];

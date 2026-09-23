@@ -199,7 +199,8 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   let attemptY = checkboxTopY - 20;
   attempts.forEach((a) => {
     const ordinal = ORDINALS[a.n] || `${a.n}th`;
-    const sentence = `${ordinal} attempt was made on ${a.date}. ${a.note}`.trim();
+    const noteText = (a.note || '').trim() || 'A notice was left and photographed as evidence of this attempt.';
+    const sentence = `${ordinal} attempt was made on ${a.date}. ${noteText}`.trim();
     const lines = wrapText(sentence, font, 11, valueWidth);
     lines.forEach((ln) => {
       page.drawText(ln, { x: valueX, y: attemptY, size: 11, font });

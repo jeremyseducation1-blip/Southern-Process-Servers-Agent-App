@@ -22,21 +22,26 @@ async function ensureBucket(sb, bucket) {
   bucketsEnsured.add(bucket);
 }
 
-// Uploads a PDF to the given bucket and returns the storage path to save
+// Uploads a file to the given bucket and returns the storage path to save
 // on the case record. `id` must be the paper's unique row id (case number
 // alone isn't unique -- see makePaperId in caseStore.js), so files never
 // collide across repeated case numbers.
-async function uploadCasePdf(bucket, id, pdfBuffer) {
+async function uploadCaseFile(bucket, id, buffer, contentType, extension) {
   const sb = getSupabaseClient();
   await ensureBucket(sb, bucket);
   const safeName = id.replace(/[^a-z0-9:_-]/gi, '_');
-  const path = `${safeName}.pdf`;
-  const { error } = await sb.storage.from(bucket).upload(path, pdfBuffer, {
-    contentType: 'application/pdf',
+  const path = `${safeName}.${extension}`;
+  const { error } = await sb.storage.from(bucket).upload(path, buffer, {
+    contentType,
     upsert: true // a later document for the same case replaces the earlier file
   });
   if (error) throw new Error(error.message);
   return path;
+}
+
+// Kept for the existing PDF call sites.
+async function uploadCasePdf(bucket, id, pdfBuffer) {
+  return uploadCaseFile(bucket, id, pdfBuffer, 'application/pdf', 'pdf');
 }
 
 // Short-lived signed URL -- generated fresh each time it's viewed, never
@@ -62,4 +67,21 @@ async function getAffidavitPdfUrl(path) {
   return getCasePdfUrl('affidavits', path);
 }
 
-module.exports = { uploadReturnPdf, uploadAffidavitPdf, getReturnPdfUrl, getAffidavitPdfUrl };
+// Attempt photos -- proof of the yellow notice left on the door, one per
+// attempt (up to 3), separate from the return/affidavit PDFs.
+async function uploadAttemptPhoto(id, attemptNumber, imageBuffer, contentType) {
+  const ext = contentType === 'image/png' ? 'png' : 'jpg';
+  return uploadCaseFile('attempt-photos', `${id}-attempt${attemptNumber}`, imageBuffer, contentType, ext);
+}
+async function getAttemptPhotoUrl(path) {
+  return getCasePdfUrl('attempt-photos', path);
+}
+
+module.exports = {
+  uploadReturnPdf,
+  uploadAffidavitPdf,
+  getReturnPdfUrl,
+  getAffidavitPdfUrl,
+  uploadAttemptPhoto,
+  getAttemptPhotoUrl
+};

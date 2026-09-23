@@ -401,6 +401,13 @@
         const viewAffidavitBtn = c.affidavitPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="affidavit" style="margin-top:.4rem;">View affidavit PDF</button>`
           : '';
+        const attemptPhotoBtns = (c.attempts || [])
+          .filter((a) => a.photoPath)
+          .map(
+            (a) =>
+              `<button type="button" class="btn secondary view-attempt-photo-btn" data-id="${c.id}" data-attempt="${a.n}" style="margin-top:.4rem;">View attempt ${a.n} photo</button>`
+          )
+          .join('');
         // A case that's still open with no return on file yet -- the
         // thing Jeremy specifically wants surfaced, not buried in a status word.
         const missingReturnNote =
@@ -421,6 +428,13 @@
               `</div>`
             : '';
         const editBtn = `<button type="button" class="btn secondary edit-case-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit</button>`;
+        const notesBlock = (c.notes || c.returnNotes)
+          ? `<div class="case-notes">` +
+            (c.notes ? `📝 ${c.notes.replace(/</g, '&lt;')}` : '') +
+            (c.notes && c.returnNotes ? '<br>' : '') +
+            (c.returnNotes ? `📦 Return note: ${c.returnNotes.replace(/</g, '&lt;')}` : '') +
+            `</div>`
+          : '';
         return (
           `<div class="case-row" data-case-row="${c.id}">` +
           `<div class="case-style">${style}</div>` +
@@ -429,8 +443,9 @@
           `<div class="case-meta">Logged ${intake}${c.returnDate ? ' · Returned ' + c.returnDate : ''}${c.closedDate ? ' · Closed ' + new Date(c.closedDate).toLocaleDateString('en-US') : ''}</div>` +
           `<span class="status-pill">${statusLabel}</span>` +
           missingReturnNote +
+          notesBlock +
           defendantBreakdown +
-          `<div>${viewReturnBtn}${viewAffidavitBtn}${markBtn}${editBtn}</div>` +
+          `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${editBtn}</div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
           `</div>`
         );
@@ -473,6 +488,7 @@
           <label>Additional defendants (comma-separated) <input type="text" class="edit-extraDefendants" value="${extraDefendants}"></label>
           <label>Service address <input type="text" class="edit-serviceAddress" value="${c.serviceAddress || ''}"></label>
           <label>Attorney <input type="text" class="edit-attorney" value="${c.attorney || ''}"></label>
+          <label>Special notes <textarea class="edit-notes" rows="3">${c.notes || ''}</textarea></label>
           <label><input type="checkbox" class="edit-isAlias" ${c.isAlias ? 'checked' : ''}> This is an alias summons</label>
           <div class="sig-actions">
             <button type="button" class="btn primary save-edit-btn">Save changes</button>
@@ -507,6 +523,7 @@
             defendants,
             serviceAddress: formEl.querySelector('.edit-serviceAddress').value.trim(),
             attorney: formEl.querySelector('.edit-attorney').value.trim(),
+            notes: formEl.querySelector('.edit-notes').value.trim(),
             isAlias: formEl.querySelector('.edit-isAlias').checked
           };
 
@@ -545,6 +562,27 @@
           window.open(url, '_blank');
         } catch (err) {
           alert('Failed to open PDF — try again. (' + err.message + ')');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      });
+    });
+
+    caseSearchResults.querySelectorAll('.view-attempt-photo-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const attempt = btn.dataset.attempt;
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Opening…';
+        try {
+          const res = await fetch(`/.netlify/functions/get-attempt-photo?id=${encodeURIComponent(id)}&attempt=${attempt}`);
+          if (!res.ok) throw new Error(await res.text());
+          const { url } = await res.json();
+          window.open(url, '_blank');
+        } catch (err) {
+          alert('Failed to open photo — try again. (' + err.message + ')');
         } finally {
           btn.disabled = false;
           btn.textContent = original;
@@ -611,7 +649,7 @@
       try {
         const cases = await ensureAllCasesLoaded();
         const matches = cases.filter((c) => {
-          const haystack = [c.defendant, c.plaintiff, c.caseNo, c.caseType, c.serviceAddress, ...(c.defendants || []).map((d) => d.name)]
+          const haystack = [c.defendant, c.plaintiff, c.caseNo, c.caseType, c.serviceAddress, c.notes, c.returnNotes, ...(c.defendants || []).map((d) => d.name)]
             .filter(Boolean)
             .join(' ')
             .toLowerCase();
@@ -723,6 +761,7 @@
     $('#extraDefendants').value = '';
     $('#serviceAddress').value = '';
     $('#attorney').value = 'Scott Weiss';
+    $('#caseNotes').value = '';
     $('#isAlias').checked = false;
     $('#isAlias').dispatchEvent(new Event('change'));
     // Court/county/state are left alone -- those tend to stay the same
@@ -755,9 +794,12 @@
   });
 
   // ---------- Alias toggle ----------
+  // The Attempts card (and its required photos) is always visible now --
+  // Jeremy takes attempt photos on any case, not just alias ones. The
+  // alias checkbox only controls whether a completed set of attempts can
+  // turn into an affidavit (that part is still alias/Scott-Weiss-only).
   const attemptsCard = $('#attemptsCard');
-  $('#isAlias').addEventListener('change', (e) => {
-    attemptsCard.hidden = !e.target.checked;
+  $('#isAlias').addEventListener('change', () => {
     evaluateAttempts();
   });
 
@@ -858,6 +900,7 @@
       const returnDate = new Date().toISOString().slice(0, 10);
       const servedDefendants = getServedDefendants();
       const returnOutcome = $('#returnOutcome').value;
+      const returnNotes = $('#returnNotes').value.trim();
 
       returnStatus.textContent = 'Attaching to case…';
       returnStatus.className = 'status';
@@ -865,7 +908,7 @@
         const res = await fetch('/.netlify/functions/attach-return', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ caseInfo, returnPdfBase64, returnDate, servedDefendants, returnOutcome })
+          body: JSON.stringify({ caseInfo, returnPdfBase64, returnDate, servedDefendants, returnOutcome, returnNotes })
         });
         if (!res.ok) throw new Error(await res.text());
         allCasesCache = null;
@@ -920,8 +963,11 @@
       if (inp.value && inp.value > today) futureDateFound = true;
     });
 
-    const allFilled =
-      dateInputs.every((i) => i.value) && noteInputs.every((i) => i.value.trim());
+    // Date + note are what gate the status dropdown -- a photo is still
+    // available per attempt as extra evidence (attached to whichever case
+    // is picked in the dropdown above), but it's optional, not required
+    // to send the affidavit.
+    const allFilled = dateInputs.every((i) => i.value) && noteInputs.every((i) => i.value.trim());
 
     if (futureDateFound) {
       statusSelect.disabled = true;
@@ -950,6 +996,100 @@
 
   dateInputs.forEach((i) => i.addEventListener('change', () => { evaluateAttempts(); invalidatePreview(); }));
   noteInputs.forEach((i) => i.addEventListener('input', () => { evaluateAttempts(); invalidatePreview(); }));
+
+  // ---------- Attempt photos: primary evidence, required for each attempt ----------
+  const attemptPhotoSaved = { 1: false, 2: false, 3: false };
+
+  // Which case attempt photos attach to -- an explicit dropdown, not
+  // whatever happens to be typed in the Case section, since Jeremy logs
+  // attempts for several cases in one sitting and the Case fields drift.
+  const attemptCaseSelect = $('#attemptCaseSelect');
+  const refreshAttemptCasesBtn = $('#refreshAttemptCasesBtn');
+  let openCasesById = {};
+
+  async function loadOpenCasesForAttempts() {
+    attemptCaseSelect.innerHTML = '<option value="">Loading open cases…</option>';
+    try {
+      const res = await fetch('/.netlify/functions/list-cases');
+      if (!res.ok) throw new Error(await res.text());
+      const { cases } = await res.json();
+      const open = (cases || []).filter((c) => c.status !== 'closed');
+      openCasesById = {};
+      open.forEach((c) => { openCasesById[c.id] = c; });
+
+      if (!open.length) {
+        attemptCaseSelect.innerHTML = '<option value="">No open cases — log intake first</option>';
+        return;
+      }
+
+      const options = open
+        .map((c) => {
+          const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
+          return `<option value="${c.id}">${style} — ${c.caseNo || 'N/A'}</option>`;
+        })
+        .join('');
+      attemptCaseSelect.innerHTML = `<option value="">Select a case…</option>${options}`;
+    } catch (err) {
+      attemptCaseSelect.innerHTML = '<option value="">Failed to load — tap Refresh</option>';
+    }
+  }
+  loadOpenCasesForAttempts();
+  refreshAttemptCasesBtn.addEventListener('click', loadOpenCasesForAttempts);
+
+  document.querySelectorAll('.attempt').forEach((attemptEl) => {
+    const n = parseInt(attemptEl.dataset.n, 10);
+    const photoInput = attemptEl.querySelector('.attempt-photo-input');
+    const photoLabel = attemptEl.querySelector('.attempt-photo-label');
+    const photoStatus = attemptEl.querySelector('.attempt-photo-status');
+    const dateInput = attemptEl.querySelector('.attempt-date');
+    const noteInput = attemptEl.querySelector('.attempt-note');
+
+    photoInput.addEventListener('change', () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+
+      const selectedCase = openCasesById[attemptCaseSelect.value];
+      if (!selectedCase) {
+        photoStatus.textContent = 'Pick which case this attempt is for (above) before taking the photo.';
+        photoStatus.className = 'status err';
+        photoInput.value = '';
+        return;
+      }
+
+      photoLabel.textContent = file.name;
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        photoStatus.textContent = 'Saving photo…';
+        photoStatus.className = 'status';
+        try {
+          const res = await fetch('/.netlify/functions/save-attempt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              caseInfo: { caseNo: selectedCase.caseNo, defendant: selectedCase.defendant },
+              attemptNumber: n,
+              date: dateInput.value,
+              note: noteInput.value.trim(),
+              photoDataUrl: reader.result
+            })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const { attempt } = await res.json();
+          const ts = attempt.photoTimestamp ? new Date(attempt.photoTimestamp).toLocaleString('en-US') : '';
+          photoStatus.textContent = `Saved to ${selectedCase.caseNo} — timestamped ${ts}.`;
+          photoStatus.className = 'status ok';
+          attemptPhotoSaved[n] = true;
+          evaluateAttempts();
+          invalidatePreview();
+        } catch (err) {
+          photoStatus.textContent = 'Failed to save photo — try again. (' + err.message + ')';
+          photoStatus.className = 'status err';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  });
 
   statusSelect.addEventListener('change', () => {
     invalidatePreview();
@@ -992,6 +1132,7 @@
       defendants,
       serviceAddress: $('#serviceAddress').value.trim(),
       attorney: $('#attorney').value.trim() || 'Scott Weiss',
+      notes: $('#caseNotes').value.trim(),
       isAlias: $('#isAlias').checked
     };
   }

@@ -11,7 +11,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { caseInfo, returnPdfBase64, returnDate, servedDefendants, returnOutcome } = JSON.parse(event.body);
+    const { caseInfo, returnPdfBase64, returnDate, servedDefendants, returnOutcome, returnNotes } = JSON.parse(event.body);
     const effectiveReturnDate = returnDate || new Date().toISOString().slice(0, 10);
 
     if (!returnPdfBase64) {
@@ -55,11 +55,12 @@ exports.handler = async (event) => {
       }
 
       existing.returns = Array.isArray(existing.returns) ? existing.returns : [];
-      existing.returns.push({ defendants: coveredNames, date: effectiveReturnDate, pdfPath: returnPdfPath, outcome: returnOutcome || 'Served' });
+      existing.returns.push({ defendants: coveredNames, date: effectiveReturnDate, pdfPath: returnPdfPath, outcome: returnOutcome || 'Served', notes: returnNotes || '' });
 
       existing.returnSent = true; // kept for anything still reading this flag at the case level
       existing.returnDate = effectiveReturnDate;
       existing.returnPdfPath = returnPdfPath;
+      existing.returnNotes = returnNotes || '';
       // Drives the status label shown everywhere -- "Served" / "Return
       // Not Found" / "Return Requested per Plaintiff" instead of a bare
       // "Closed", so the outcome is visible at a glance.

@@ -57,6 +57,9 @@
         <label>Attorney of record
           <input type="text" id="attorney" value="Scott Weiss">
         </label>
+        <label>Special notes (things Kevin or the firm told you — anything worth not forgetting)
+          <textarea id="caseNotes" rows="3" placeholder="e.g. Kevin said skip weekends on this one, or firm wants photos of the mailbox too"></textarea>
+        </label>
         <label class="check-row">
           <input type="checkbox" id="isAlias">
           This is an alias summons
@@ -152,6 +155,10 @@
         </select>
       </label>
 
+      <label>Return notes (anything special about this specific return)
+        <textarea id="returnNotes" rows="2" placeholder="e.g. Left with roommate, or gate code needed for next time"></textarea>
+      </label>
+
       <label class="file-drop" id="returnDrop">
         <input type="file" id="returnPdfInput" accept="application/pdf">
         <span id="returnPdfLabel">Tap to upload the Genius Scan PDF</span>
@@ -164,21 +171,44 @@
     </section>
 
     <!-- STEP 2: Attempts -- only relevant for alias cases -->
-    <section class="card" id="attemptsCard" hidden>
+    <section class="card" id="attemptsCard">
       <h2>Attempts</h2>
-      <p class="hint">Three attempts are required before a status can be selected. Dates can't be in the future.</p>
+      <p class="hint">Three attempts are required before a status can be selected — a date and a written note for each. Dates can't be in the future. A photo of the yellow notice is optional extra evidence, timestamped the moment it's saved, but doesn't block sending the affidavit.</p>
+
+      <label>Which case is this attempt for?
+        <select id="attemptCaseSelect">
+          <option value="">Loading open cases…</option>
+        </select>
+      </label>
+      <button type="button" class="btn secondary" id="refreshAttemptCasesBtn">Refresh case list</button>
+      <p class="hint">This is what the attempt photos attach to — not whatever's typed in the Case section above. Pick the right case here before taking a photo, especially if you're logging attempts for several cases in one sitting.</p>
 
       <div class="attempt" data-n="1">
         <label>Attempt 1 date <input type="date" class="attempt-date"></label>
-        <label>Note <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+        <label>Note (required) <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+        <label class="file-drop attempt-photo-drop">
+          <input type="file" class="attempt-photo-input" accept="image/*" capture="environment">
+          <span class="attempt-photo-label">Photo of notice (optional evidence)</span>
+        </label>
+        <p class="status attempt-photo-status"></p>
       </div>
       <div class="attempt" data-n="2">
         <label>Attempt 2 date <input type="date" class="attempt-date"></label>
-        <label>Note <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+        <label>Note (required) <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+        <label class="file-drop attempt-photo-drop">
+          <input type="file" class="attempt-photo-input" accept="image/*" capture="environment">
+          <span class="attempt-photo-label">Photo of notice (optional evidence)</span>
+        </label>
+        <p class="status attempt-photo-status"></p>
       </div>
       <div class="attempt" data-n="3">
         <label>Attempt 3 date <input type="date" class="attempt-date"></label>
-        <label>Note <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+        <label>Note (required) <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+        <label class="file-drop attempt-photo-drop">
+          <input type="file" class="attempt-photo-input" accept="image/*" capture="environment">
+          <span class="attempt-photo-label">Photo of notice (optional evidence)</span>
+        </label>
+        <p class="status attempt-photo-status"></p>
       </div>
 
       <label>Status

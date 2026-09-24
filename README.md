@@ -187,7 +187,10 @@ Every case can have up to 3 attempts logged (date + note), independent of
 whether it ever needs an affidavit — a case served on the first try never
 gets any attempts logged at all; a case that takes 3 tries gets all 3
 before it's ever an alias/affidavit matter. Attempts are always visible
-under "Attempts" -- not gated behind the alias checkbox.
+under "Attempts" -- not gated behind the alias checkbox. Each attempt has
+its own **Save attempt** button that persists it to the case record right
+then (no photo needed) -- typing an attempt and never taking a photo used
+to go nowhere until the affidavit got generated; now it saves immediately.
 
 A photo can optionally be attached to any attempt -- e.g. the yellow notice
 left on the door. It saves immediately (storage + case record) the moment

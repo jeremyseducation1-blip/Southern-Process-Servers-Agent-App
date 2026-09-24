@@ -1115,6 +1115,55 @@
     const photoStatus = attemptEl.querySelector('.attempt-photo-status');
     const dateInput = attemptEl.querySelector('.attempt-date');
     const noteInput = attemptEl.querySelector('.attempt-note');
+    const saveBtn = attemptEl.querySelector('.save-attempt-btn');
+    const saveStatus = attemptEl.querySelector('.attempt-save-status');
+
+    // Saves the attempt (date + note, no photo required) right away --
+    // this is what actually persists it to the case record. Without this,
+    // typing an attempt and never taking a photo meant it went nowhere
+    // until the affidavit got generated, which is wrong for the many
+    // cases that never need an affidavit at all.
+    saveBtn.addEventListener('click', async () => {
+      const selectedCase = resolveAttemptCase();
+      if (!selectedCase) {
+        saveStatus.textContent = 'Pick a case from the dropdown, or type in the case number and defendant (above), before saving.';
+        saveStatus.className = 'status err';
+        return;
+      }
+      if (!dateInput.value) {
+        saveStatus.textContent = 'A date is required to save this attempt.';
+        saveStatus.className = 'status err';
+        return;
+      }
+
+      saveBtn.disabled = true;
+      saveStatus.textContent = 'Saving…';
+      saveStatus.className = 'status';
+      try {
+        const res = await fetch('/.netlify/functions/save-attempt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            caseInfo: { caseNo: selectedCase.caseNo, defendant: selectedCase.defendant },
+            attemptNumber: n,
+            date: dateInput.value,
+            note: noteInput.value.trim(),
+            photoDataUrl: null
+          })
+        });
+        if (!res.ok) throw new Error(await res.text());
+        saveStatus.textContent = `Saved — attempt ${n} logged for ${selectedCase.caseNo}.`;
+        saveStatus.className = 'status ok';
+        evaluateAttempts();
+        invalidatePreview();
+        allCasesCache = null;
+      } catch (err) {
+        saveStatus.textContent = 'Failed to save — try again. (' + err.message + ')';
+        saveStatus.className = 'status err';
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
 
     photoInput.addEventListener('change', () => {
       const file = photoInput.files[0];

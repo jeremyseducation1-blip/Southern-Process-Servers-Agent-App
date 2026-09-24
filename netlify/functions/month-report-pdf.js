@@ -61,12 +61,15 @@ exports.handler = async (event) => {
         { x: left + 14, y, size: 10, font }
       );
       y -= 14;
+      // Everything on this report is open by definition (still-open
+      // cases only), so this is always red -- matches the red/green
+      // convention used everywhere else in the app.
       page.drawText(`Status: ${statusLabel}   Logged: ${intake}`, {
         x: left + 14,
         y,
         size: 10,
-        font,
-        color: rgb(0.3, 0.3, 0.3)
+        font: bold,
+        color: rgb(0.6, 0.12, 0.12)
       });
       y -= 22;
     });

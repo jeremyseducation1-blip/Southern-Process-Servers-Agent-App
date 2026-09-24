@@ -188,61 +188,21 @@
       <p class="status" id="returnStatus"></p>
     </section>
 
-    <!-- STEP 2: Attempts -- only relevant for alias cases -->
+    <!-- Affidavit -- attempts themselves are now logged from Search
+         Cases (tied directly to the case you're looking at, no
+         dropdown/typing ambiguity). This section reads whatever's
+         already been logged for the case typed in the Case section
+         above, rather than making you re-type attempts here. -->
     <section class="card" id="attemptsCard">
-      <h2>Attempts</h2>
-      <p class="hint">Three attempts are required before a status can be selected — a date and a written note for each. Dates can't be in the future. A photo of the yellow notice is optional extra evidence, timestamped the moment it's saved, but doesn't block sending the affidavit.</p>
+      <h2>Affidavit</h2>
+      <p class="hint">Log attempts from Search Cases (below) against the case they're for. Once a case has all 3 attempts (date + note each, no future dates), come back here with that same case number + defendant typed in the Case section above, and the status dropdown unlocks automatically.</p>
 
-      <label>Which case is this attempt for?
-        <select id="attemptCaseSelect">
-          <option value="">Loading open cases…</option>
-        </select>
-      </label>
-      <button type="button" class="btn secondary" id="refreshAttemptCasesBtn">Refresh case list</button>
-
-      <p class="hint">Or type it in directly instead of picking from the list — case number and defendant name, exactly as they were logged at intake:</p>
-      <label>Case No. <input type="text" id="attemptCaseNoManual" placeholder="26GC8832"></label>
-      <label>Defendant <input type="text" id="attemptDefendantManual" placeholder="Edilia Tello"></label>
-
-      <p class="hint">Whichever one you use last (dropdown or typed) is what the attempt photos attach to — not whatever's in the Case section above. Set this before taking a photo, especially if you're logging attempts for several cases in one sitting.</p>
-
-      <div class="attempt" data-n="1">
-        <label>Attempt 1 date <input type="date" class="attempt-date"></label>
-        <label>Note (required) <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
-        <button type="button" class="btn primary save-attempt-btn">Save attempt 1</button>
-        <p class="status attempt-save-status"></p>
-        <label class="file-drop attempt-photo-drop">
-          <input type="file" class="attempt-photo-input" accept="image/*" capture="environment">
-          <span class="attempt-photo-label">Photo of notice (optional evidence)</span>
-        </label>
-        <p class="status attempt-photo-status"></p>
-      </div>
-      <div class="attempt" data-n="2">
-        <label>Attempt 2 date <input type="date" class="attempt-date"></label>
-        <label>Note (required) <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
-        <button type="button" class="btn primary save-attempt-btn">Save attempt 2</button>
-        <p class="status attempt-save-status"></p>
-        <label class="file-drop attempt-photo-drop">
-          <input type="file" class="attempt-photo-input" accept="image/*" capture="environment">
-          <span class="attempt-photo-label">Photo of notice (optional evidence)</span>
-        </label>
-        <p class="status attempt-photo-status"></p>
-      </div>
-      <div class="attempt" data-n="3">
-        <label>Attempt 3 date <input type="date" class="attempt-date"></label>
-        <label>Note (required) <textarea class="attempt-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
-        <button type="button" class="btn primary save-attempt-btn">Save attempt 3</button>
-        <p class="status attempt-save-status"></p>
-        <label class="file-drop attempt-photo-drop">
-          <input type="file" class="attempt-photo-input" accept="image/*" capture="environment">
-          <span class="attempt-photo-label">Photo of notice (optional evidence)</span>
-        </label>
-        <p class="status attempt-photo-status"></p>
-      </div>
+      <button type="button" class="btn secondary" id="checkAttemptsBtn">Check attempts for this case</button>
+      <p class="hint" id="attemptsCheckStatus"></p>
 
       <label>Status
         <select id="statusSelect" disabled>
-          <option value="">Complete all 3 attempts first</option>
+          <option value="">Check attempts first</option>
           <option value="No response">No response</option>
           <option value="Evading service">Evading service</option>
           <option value="Vacant home">Vacant home</option>

@@ -188,31 +188,39 @@ address, and status — never signatures, photos, or your stamp info.
   `netlify/functions/lib/buildAffidavitPdf.js`.
 - Signature storage is per-device — each device needs its own one-time setup.
 
-## Attempts and photo evidence (completely separate from affidavits)
+## Attempts are logged from Search Cases, not a separate section
 
-Every case can have up to 3 attempts logged (date + note), independent of
-whether it ever needs an affidavit — a case served on the first try never
-gets any attempts logged at all; a case that takes 3 tries gets all 3
-before it's ever an alias/affidavit matter. Attempts are always visible
-under "Attempts" -- not gated behind the alias checkbox. Each attempt has
-its own **Save attempt** button that persists it to the case record right
-then (no photo needed) -- typing an attempt and never taking a photo used
-to go nowhere until the affidavit got generated; now it saves immediately.
+Every case can have up to 3 attempts logged (date + note, optional photo),
+independent of whether it ever needs an affidavit -- a case served on the
+first try never gets any attempts logged at all; a case that takes 3 tries
+gets all 3 before it's ever an alias/affidavit matter.
 
-A photo can optionally be attached to any attempt -- e.g. the yellow notice
-left on the door. It saves immediately (storage + case record) the moment
-you take it, stamped with the server's own timestamp (not the phone's
-clock), independent evidence of when the attempt happened. Photos are
-**pure logging evidence and have nothing to do with the affidavit** --
-they don't gate the status dropdown, aren't required to send anything, and
-are never embedded in the affidavit PDF. A dropdown (or type it in
-directly) picks which case a photo attaches to, since attempts often get
-logged for several cases in one sitting.
+Attempts are logged directly from **Search Cases**: find the case, tap
+"+ Log attempt N" (auto-numbered based on what's already logged, caps at
+3), fill in date + note (required), optionally attach a photo of the
+yellow notice, hit Save. Because this is tied directly to the case row
+you're already looking at, there's no dropdown or manual case-number entry
+to get wrong -- the exact bug that motivated this change (a typed
+defendant name not matching the one from intake, causing "log intake
+first" errors on a case that was already logged).
+
+Photos are optional, saved immediately with the server's own timestamp
+(not the phone's clock) as independent evidence, and have nothing to do
+with the affidavit -- they don't gate anything and are never embedded in
+the affidavit PDF.
 
 Search Cases shows the full attempt history for every case (date, note,
-and photo timestamp if one exists) directly in the result -- not just a
-photo button -- so you can see at a glance how many attempts a case took
-and when, whether or not it ever became an affidavit.
+and photo timestamp if one exists) directly in the result, so you can see
+at a glance how many attempts a case took and when.
+
+## Affidavit (reads attempts already logged, doesn't re-collect them)
+
+The "Affidavit" card no longer has its own attempt-entry fields. Instead:
+type the case number + defendant into the Case section (same as always),
+hit **"Check attempts for this case"** -- it pulls whatever's already been
+logged via Search Cases, and if all 3 are valid (date + note, no future
+dates), the status dropdown unlocks. From there it's the same as before:
+pick a status, preview, send.
 
 ## Phone numbers (data collection)
 
@@ -298,3 +306,12 @@ firm-specific) shows this same list.
 Regenerating the same week's invoice (e.g. re-running it on demand after
 the automatic send already fired) just replaces that week's logged record
 -- there's always exactly one invoice per week, not a pile of duplicates.
+
+## Status color-coding (red/green)
+
+Everywhere status shows -- Search Cases, Kevin's/firm share links, and the
+Weekly Log / Monthly Report PDFs -- open cases show **red**, closed
+(returned) cases show **green**, regardless of the specific outcome
+(Served, Return Not Found, Return Requested per Plaintiff all read as
+green once closed). No running tally/count anywhere -- just the color, so
+it's a glance, not a count.

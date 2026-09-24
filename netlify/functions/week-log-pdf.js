@@ -68,6 +68,9 @@ exports.handler = async (event) => {
 
       const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
       const statusLabel = c.status === 'closed' ? (c.returnOutcome || 'Closed') : c.returnSent ? 'Returned — affidavit pending' : 'Open';
+      // Green for closed/returned (regardless of the specific outcome),
+      // red for still open -- easy to scan the PDF at a glance.
+      const statusColor = c.status === 'closed' ? rgb(0.12, 0.45, 0.12) : rgb(0.6, 0.12, 0.12);
 
       page.drawText(`${i + 1}. ${style}`, { x: left, y, size: 12, font: bold });
       y -= 16;
@@ -77,8 +80,8 @@ exports.handler = async (event) => {
         x: left + 14,
         y,
         size: 10,
-        font,
-        color: rgb(0.3, 0.3, 0.3)
+        font: bold,
+        color: statusColor
       });
       y -= 22;
     });

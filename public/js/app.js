@@ -524,6 +524,14 @@
               `</div>`
             : '';
         const editBtn = `<button type="button" class="btn secondary edit-case-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit</button>`;
+        const nextAttemptN = Math.min(3, sortedAttempts.length + 1);
+        const logAttemptBtn = sortedAttempts.length >= 3
+          ? ''
+          : `<button type="button" class="btn secondary log-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">+ Log attempt ${nextAttemptN}</button>`;
+        // Red for open, green for anything returned/closed -- regardless
+        // of the specific outcome (served, not found, requested per
+        // plaintiff all read the same at a glance: it's done).
+        const statusPillClass = c.status === 'closed' ? 'status-pill status-pill-closed' : 'status-pill status-pill-open';
         const notesBlock = (c.notes || c.returnNotes)
           ? `<div class="case-notes">` +
             (c.notes ? `📝 ${c.notes.replace(/</g, '&lt;')}` : '') +
@@ -540,18 +548,115 @@
           `<div class="case-meta">Case No. ${c.caseNo || 'N/A'} — ${c.attorney || ''}${c.caseType ? ' — ' + c.caseType : ''}</div>` +
           `<div class="case-meta">${c.serviceAddress || ''}</div>` +
           `<div class="case-meta">Logged ${intake}${c.returnDate ? ' · Returned ' + c.returnDate : ''}${c.closedDate ? ' · Closed ' + new Date(c.closedDate).toLocaleDateString('en-US') : ''}</div>` +
-          `<span class="status-pill">${statusLabel}</span>` +
+          `<span class="${statusPillClass}">${statusLabel}</span>` +
           missingReturnNote +
           notesBlock +
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${editBtn}</div>` +
+          `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${editBtn}</div>` +
+          `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
           `</div>`
         );
       })
       .join('');
+
+    caseSearchResults.querySelectorAll('.log-attempt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const c = cases.find((x) => x.id === id);
+        const formEl = caseSearchResults.querySelector(`.attempt-log-form[data-attempt-form="${CSS.escape(id)}"]`);
+        if (!formEl || !c) return;
+
+        if (!formEl.hidden) {
+          formEl.hidden = true;
+          return;
+        }
+
+        const existingN = (c.attempts || []).map((a) => a.n);
+        const n = [1, 2, 3].find((num) => !existingN.includes(num));
+        if (!n) {
+          alert('This case already has all 3 attempts logged.');
+          return;
+        }
+
+        formEl.innerHTML = `
+          <label>Attempt ${n} date <input type="date" class="attempt-log-date"></label>
+          <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
+          <label class="file-drop">
+            <input type="file" class="attempt-log-photo" accept="image/*" capture="environment">
+            <span class="attempt-log-photo-label">Photo of notice (optional evidence)</span>
+          </label>
+          <div class="sig-actions">
+            <button type="button" class="btn primary attempt-log-save-btn">Save attempt ${n}</button>
+            <button type="button" class="btn secondary attempt-log-cancel-btn">Cancel</button>
+          </div>
+          <p class="status attempt-log-status"></p>
+        `;
+        formEl.hidden = false;
+
+        formEl.querySelector('.attempt-log-cancel-btn').addEventListener('click', () => {
+          formEl.hidden = true;
+        });
+
+        formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
+          const saveBtn = formEl.querySelector('.attempt-log-save-btn');
+          const statusEl = formEl.querySelector('.attempt-log-status');
+          const dateInput = formEl.querySelector('.attempt-log-date');
+          const noteInput = formEl.querySelector('.attempt-log-note');
+          const photoInput = formEl.querySelector('.attempt-log-photo');
+
+          if (!dateInput.value) {
+            statusEl.textContent = 'A date is required.';
+            statusEl.className = 'status err';
+            return;
+          }
+          if (!noteInput.value.trim()) {
+            statusEl.textContent = 'A note is required.';
+            statusEl.className = 'status err';
+            return;
+          }
+
+          const finishSave = async (photoDataUrl) => {
+            saveBtn.disabled = true;
+            statusEl.textContent = 'Saving…';
+            statusEl.className = 'status';
+            try {
+              const res = await fetch('/.netlify/functions/save-attempt', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  caseInfo: { caseNo: c.caseNo, defendant: c.defendant },
+                  attemptNumber: n,
+                  date: dateInput.value,
+                  note: noteInput.value.trim(),
+                  photoDataUrl: photoDataUrl || null
+                })
+              });
+              if (!res.ok) throw new Error(await res.text());
+              statusEl.textContent = `Saved — attempt ${n} logged.`;
+              statusEl.className = 'status ok';
+              allCasesCache = null;
+              setTimeout(() => caseSearchInput.dispatchEvent(new Event('input')), 600);
+            } catch (err) {
+              statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
+              statusEl.className = 'status err';
+              saveBtn.disabled = false;
+            }
+          };
+
+          const file = photoInput.files[0];
+          if (file) {
+            const reader = new FileReader();
+            reader.onload = () => finishSave(reader.result);
+            reader.readAsDataURL(file);
+          } else {
+            finishSave(null);
+          }
+        });
+      });
+    });
 
     caseSearchResults.querySelectorAll('.edit-case-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -903,9 +1008,8 @@
   // alias checkbox only controls whether a completed set of attempts can
   // turn into an affidavit (that part is still alias/Scott-Weiss-only).
   const attemptsCard = $('#attemptsCard');
-  $('#isAlias').addEventListener('change', () => {
-    evaluateAttempts();
-  });
+  // (No listener needed here anymore -- the alias checkbox no longer
+  // toggles any live gating; "Check attempts" handles that on demand.)
 
   // ---------- Return PDF: uploaded from Genius Scan, attaches to the case immediately -- no email ----------
   const returnPdfInput = $('#returnPdfInput');
@@ -1027,9 +1131,7 @@
     reader.readAsDataURL(file);
   });
 
-  // ---------- Attempts gating ----------
-  const dateInputs = Array.from(document.querySelectorAll('.attempt-date'));
-  const noteInputs = Array.from(document.querySelectorAll('.attempt-note'));
+  // ---------- Affidavit gating: reads attempts already logged from Search Cases ----------
   const statusSelect = $('#statusSelect');
   const sigBlock = $('#signatureBlock');
   const previewAffidavitBtn = $('#previewAffidavitBtn');
@@ -1037,8 +1139,11 @@
   const affidavitPreviewFrame = $('#affidavitPreviewFrame');
   const completeBtn = $('#completeAffidavitBtn');
   const affidavitStatus = $('#affidavitStatus');
+  const checkAttemptsBtn = $('#checkAttemptsBtn');
+  const attemptsCheckStatus = $('#attemptsCheckStatus');
   let previewedPdfBase64 = null; // gates sending -- must match what's currently in the iframe
   let previewObjectUrl = null;
+  let checkedCaseAttempts = null; // the attempts array as of the last "Check attempts" click
 
   // Anything that changes what would go into the PDF invalidates the
   // current preview -- Jeremy should never be able to send a preview
@@ -1058,227 +1163,66 @@
     return d.toISOString().slice(0, 10);
   }
 
-  function evaluateAttempts() {
-    if (attemptsCard.hidden) return;
-
-    const today = todayStr();
-    let futureDateFound = false;
-    dateInputs.forEach((inp) => {
-      if (inp.value && inp.value > today) futureDateFound = true;
-    });
-
-    // Date + note are what gate the status dropdown -- a photo is still
-    // available per attempt as extra evidence (attached to whichever case
-    // is picked in the dropdown above), but it's optional, not required
-    // to send the affidavit.
-    const allFilled = dateInputs.every((i) => i.value) && noteInputs.every((i) => i.value.trim());
-
-    if (futureDateFound) {
-      statusSelect.disabled = true;
-      statusSelect.value = '';
-      affidavitStatus.textContent = 'One of the attempt dates is in the future — fix it before a status can be selected.';
-      affidavitStatus.className = 'status warn';
-      sigBlock.hidden = true;
-      previewAffidavitBtn.disabled = true;
+  // Pulls the current case's logged attempts from the server (whatever's
+  // been saved via Search Cases) and unlocks the status dropdown once
+  // there are 3 valid ones (date + note, no future dates). Attempts
+  // themselves are no longer typed here -- this just reads what's
+  // already on record for the case currently typed in the Case section.
+  checkAttemptsBtn.addEventListener('click', async () => {
+    const caseNo = $('#caseNo').value.trim();
+    const defendant = $('#defendant').value.trim();
+    if (!caseNo || !defendant) {
+      attemptsCheckStatus.textContent = 'Type the case number and defendant in the Case section above first.';
+      attemptsCheckStatus.className = 'status err';
       return;
     }
 
-    if (allFilled) {
-      statusSelect.disabled = false;
-      if (statusSelect.options[0].value === '') {
-        statusSelect.options[0].textContent = 'Select status';
-      }
-      affidavitStatus.textContent = '';
-      affidavitStatus.className = 'status';
-    } else {
-      statusSelect.disabled = true;
-      statusSelect.value = '';
-      sigBlock.hidden = true;
-      previewAffidavitBtn.disabled = true;
-    }
-  }
-
-  dateInputs.forEach((i) => i.addEventListener('change', () => { evaluateAttempts(); invalidatePreview(); }));
-  noteInputs.forEach((i) => i.addEventListener('input', () => { evaluateAttempts(); invalidatePreview(); }));
-
-  // ---------- Attempt photos: primary evidence, required for each attempt ----------
-  const attemptPhotoSaved = { 1: false, 2: false, 3: false };
-
-  // Which case attempt photos attach to -- either the dropdown or typed
-  // manually, whichever was touched last. Not whatever happens to be in
-  // the Case section, since Jeremy logs attempts for several cases in
-  // one sitting and those fields drift.
-  const attemptCaseSelect = $('#attemptCaseSelect');
-  const refreshAttemptCasesBtn = $('#refreshAttemptCasesBtn');
-  const attemptCaseNoManual = $('#attemptCaseNoManual');
-  const attemptDefendantManual = $('#attemptDefendantManual');
-  let openCasesById = {};
-  let attemptCaseSource = null; // 'dropdown' | 'manual'
-
-  attemptCaseSelect.addEventListener('change', () => {
-    if (attemptCaseSelect.value) attemptCaseSource = 'dropdown';
-  });
-  [attemptCaseNoManual, attemptDefendantManual].forEach((el) => {
-    el.addEventListener('input', () => {
-      attemptCaseSource = 'manual';
-    });
-  });
-
-  // Resolves { caseNo, defendant } from whichever source was used last.
-  function resolveAttemptCase() {
-    if (attemptCaseSource === 'manual') {
-      const caseNo = attemptCaseNoManual.value.trim();
-      const defendant = attemptDefendantManual.value.trim();
-      if (!caseNo || !defendant) return null;
-      return { caseNo, defendant };
-    }
-    const selected = openCasesById[attemptCaseSelect.value];
-    if (!selected) return null;
-    return { caseNo: selected.caseNo, defendant: selected.defendant };
-  }
-
-  async function loadOpenCasesForAttempts() {
-    attemptCaseSelect.innerHTML = '<option value="">Loading open cases…</option>';
+    checkAttemptsBtn.disabled = true;
+    attemptsCheckStatus.textContent = 'Checking…';
+    attemptsCheckStatus.className = 'status';
     try {
-      const res = await fetch('/.netlify/functions/list-cases');
+      const qs = new URLSearchParams({ caseNo, defendant });
+      const res = await fetch(`/.netlify/functions/get-case?${qs.toString()}`);
       if (!res.ok) throw new Error(await res.text());
-      const { cases } = await res.json();
-      const open = (cases || []).filter((c) => c.status !== 'closed');
-      openCasesById = {};
-      open.forEach((c) => { openCasesById[c.id] = c; });
+      const { case: caseRecord } = await res.json();
+      const attempts = (caseRecord.attempts || []).slice().sort((a, b) => a.n - b.n);
 
-      if (!open.length) {
-        attemptCaseSelect.innerHTML = '<option value="">No open cases — log intake first</option>';
-        return;
+      const today = todayStr();
+      const validAttempts = [1, 2, 3].every((n) => {
+        const a = attempts.find((x) => x.n === n);
+        return a && a.date && a.note && a.date <= today;
+      });
+      const futureDateFound = attempts.some((a) => a.date && a.date > today);
+
+      checkedCaseAttempts = attempts;
+      invalidatePreview();
+
+      if (futureDateFound) {
+        statusSelect.disabled = true;
+        statusSelect.value = '';
+        attemptsCheckStatus.textContent = 'One of the logged attempt dates is in the future — fix it in Search Cases (Edit) before a status can be selected.';
+        attemptsCheckStatus.className = 'status warn';
+        sigBlock.hidden = true;
+        previewAffidavitBtn.disabled = true;
+      } else if (validAttempts) {
+        statusSelect.disabled = false;
+        attemptsCheckStatus.textContent = `All 3 attempts found for ${caseNo}. Pick a status below.`;
+        attemptsCheckStatus.className = 'status ok';
+      } else {
+        const loggedCount = [1, 2, 3].filter((n) => attempts.find((x) => x.n === n && x.date && x.note)).length;
+        statusSelect.disabled = true;
+        statusSelect.value = '';
+        sigBlock.hidden = true;
+        previewAffidavitBtn.disabled = true;
+        attemptsCheckStatus.textContent = `${loggedCount} of 3 attempts logged for ${caseNo} so far — log the rest from Search Cases, then check again.`;
+        attemptsCheckStatus.className = 'status warn';
       }
-
-      const options = open
-        .map((c) => {
-          const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
-          return `<option value="${c.id}">${style} — ${c.caseNo || 'N/A'}</option>`;
-        })
-        .join('');
-      attemptCaseSelect.innerHTML = `<option value="">Select a case…</option>${options}`;
     } catch (err) {
-      attemptCaseSelect.innerHTML = '<option value="">Failed to load — tap Refresh</option>';
+      attemptsCheckStatus.textContent = 'Failed to check — try again. (' + err.message + ')';
+      attemptsCheckStatus.className = 'status err';
+    } finally {
+      checkAttemptsBtn.disabled = false;
     }
-  }
-  loadOpenCasesForAttempts();
-  refreshAttemptCasesBtn.addEventListener('click', loadOpenCasesForAttempts);
-
-  document.querySelectorAll('.attempt').forEach((attemptEl) => {
-    const n = parseInt(attemptEl.dataset.n, 10);
-    const photoInput = attemptEl.querySelector('.attempt-photo-input');
-    const photoLabel = attemptEl.querySelector('.attempt-photo-label');
-    const photoStatus = attemptEl.querySelector('.attempt-photo-status');
-    const dateInput = attemptEl.querySelector('.attempt-date');
-    const noteInput = attemptEl.querySelector('.attempt-note');
-    const saveBtn = attemptEl.querySelector('.save-attempt-btn');
-    const saveStatus = attemptEl.querySelector('.attempt-save-status');
-
-    // Saves the attempt (date + note, no photo required) right away --
-    // this is what actually persists it to the case record. Without this,
-    // typing an attempt and never taking a photo meant it went nowhere
-    // until the affidavit got generated, which is wrong for the many
-    // cases that never need an affidavit at all.
-    saveBtn.addEventListener('click', async () => {
-      const selectedCase = resolveAttemptCase();
-      if (!selectedCase) {
-        saveStatus.textContent = 'Pick a case from the dropdown, or type in the case number and defendant (above), before saving.';
-        saveStatus.className = 'status err';
-        return;
-      }
-      if (!dateInput.value) {
-        saveStatus.textContent = 'A date is required to save this attempt.';
-        saveStatus.className = 'status err';
-        return;
-      }
-
-      saveBtn.disabled = true;
-      saveStatus.textContent = 'Saving…';
-      saveStatus.className = 'status';
-      try {
-        const res = await fetch('/.netlify/functions/save-attempt', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            caseInfo: { caseNo: selectedCase.caseNo, defendant: selectedCase.defendant },
-            attemptNumber: n,
-            date: dateInput.value,
-            note: noteInput.value.trim(),
-            photoDataUrl: null
-          })
-        });
-        if (!res.ok) throw new Error(await res.text());
-        saveStatus.textContent = `Saved — attempt ${n} logged for ${selectedCase.caseNo}. Ready for the next one.`;
-        saveStatus.className = 'status ok';
-
-        // Clear the row out -- otherwise Jeremy has to manually erase
-        // everything before logging the next attempt, which is exactly
-        // the unnecessary step this button was supposed to remove.
-        dateInput.value = '';
-        noteInput.value = '';
-        photoInput.value = '';
-        photoLabel.textContent = 'Photo of notice (optional evidence)';
-        photoStatus.textContent = '';
-        attemptPhotoSaved[n] = false;
-
-        evaluateAttempts();
-        invalidatePreview();
-        allCasesCache = null;
-      } catch (err) {
-        saveStatus.textContent = 'Failed to save — try again. (' + err.message + ')';
-        saveStatus.className = 'status err';
-      } finally {
-        saveBtn.disabled = false;
-      }
-    });
-
-    photoInput.addEventListener('change', () => {
-      const file = photoInput.files[0];
-      if (!file) return;
-
-      const selectedCase = resolveAttemptCase();
-      if (!selectedCase) {
-        photoStatus.textContent = 'Pick a case from the dropdown, or type in the case number and defendant (above), before taking the photo.';
-        photoStatus.className = 'status err';
-        photoInput.value = '';
-        return;
-      }
-
-      photoLabel.textContent = file.name;
-
-      const reader = new FileReader();
-      reader.onload = async () => {
-        photoStatus.textContent = 'Saving photo…';
-        photoStatus.className = 'status';
-        try {
-          const res = await fetch('/.netlify/functions/save-attempt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              caseInfo: { caseNo: selectedCase.caseNo, defendant: selectedCase.defendant },
-              attemptNumber: n,
-              date: dateInput.value,
-              note: noteInput.value.trim(),
-              photoDataUrl: reader.result
-            })
-          });
-          if (!res.ok) throw new Error(await res.text());
-          const { attempt } = await res.json();
-          const ts = attempt.photoTimestamp ? new Date(attempt.photoTimestamp).toLocaleString('en-US') : '';
-          photoStatus.textContent = `Saved to ${selectedCase.caseNo} — timestamped ${ts}.`;
-          photoStatus.className = 'status ok';
-          attemptPhotoSaved[n] = true;
-          evaluateAttempts();
-          invalidatePreview();
-        } catch (err) {
-          photoStatus.textContent = 'Failed to save photo — try again. (' + err.message + ')';
-          photoStatus.className = 'status err';
-        }
-      };
-      reader.readAsDataURL(file);
-    });
   });
 
   statusSelect.addEventListener('change', () => {
@@ -1340,11 +1284,7 @@
     affidavitStatus.textContent = 'Generating preview…';
     affidavitStatus.className = 'status';
 
-    const attempts = [1, 2, 3].map((n) => ({
-      n,
-      date: dateInputs[n - 1].value,
-      note: noteInputs[n - 1].value.trim()
-    }));
+    const attempts = (checkedCaseAttempts || []).map((a) => ({ n: a.n, date: a.date, note: a.note }));
     const serverInfo = JSON.parse(localStorage.getItem('serverInfo') || '{}');
 
     try {
@@ -1397,11 +1337,7 @@
     affidavitStatus.textContent = 'Sending to Kevin…';
     affidavitStatus.className = 'status';
 
-    const attempts = [1, 2, 3].map((n) => ({
-      n,
-      date: dateInputs[n - 1].value,
-      note: noteInputs[n - 1].value.trim()
-    }));
+    const attempts = (checkedCaseAttempts || []).map((a) => ({ n: a.n, date: a.date, note: a.note }));
 
     const serverInfo = JSON.parse(localStorage.getItem('serverInfo') || '{}');
 

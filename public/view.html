@@ -22,6 +22,18 @@
     background:#fff;
     margin-top:.3rem;
   }
+  .status-pill-open{
+    background:#fbe4e4;
+    border-color:#d98a8a;
+    color:#7a1f1f;
+    font-weight:bold;
+  }
+  .status-pill-closed{
+    background:#e2f3e2;
+    border-color:#8ec98e;
+    color:#1f5c1f;
+    font-weight:bold;
+  }
   .attempt-history{
     margin-top:.4rem;
     padding:.4rem .6rem;
@@ -105,6 +117,7 @@
             if (c.status === 'closed') statusLabel = c.returnOutcome || 'Closed';
             else if (c.returnSent) statusLabel = 'Returned — affidavit pending';
             else statusLabel = 'Open';
+            const statusPillClass = c.status === 'closed' ? 'status-pill status-pill-closed' : 'status-pill status-pill-open';
             const intake = c.intakeDate ? new Date(c.intakeDate).toLocaleDateString('en-US') : '';
             const sortedAttempts = (c.attempts || []).slice().sort((a, b) => a.n - b.n);
             const attemptHistory = sortedAttempts.length
@@ -127,7 +140,7 @@
                 <div class="case-meta">Case No. ${c.caseNo || 'N/A'} — ${c.attorney || ''}${c.caseType ? ' — ' + c.caseType : ''}</div>
                 <div class="case-meta">${c.serviceAddress || ''}</div>
                 <div class="case-meta">Logged ${intake}</div>
-                <span class="status-pill">${statusLabel}${c.returnDate ? ' · Returned ' + c.returnDate : ''}</span>
+                <span class="${statusPillClass}">${statusLabel}${c.returnDate ? ' · Returned ' + c.returnDate : ''}</span>
                 ${attemptHistory}
               </div>`;
           })

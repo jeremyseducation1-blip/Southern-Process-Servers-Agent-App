@@ -27,7 +27,18 @@ function publicView(c) {
     returnDate: c.returnDate,
     returnOutcome: c.returnOutcome || null,
     affidavitSent: c.affidavitSent,
-    closedDate: c.closedDate || null
+    closedDate: c.closedDate || null,
+    // Attempt history (date, note, and whether/when a photo was taken) --
+    // Kevin needs to see this, not just the case-level status. Leaves out
+    // the internal storage path for the photo itself (that'd need a
+    // separate signed-URL endpoint to be viewable, not built yet).
+    attempts: (c.attempts || []).map((a) => ({
+      n: a.n,
+      date: a.date,
+      note: a.note,
+      hasPhoto: !!a.photoPath,
+      photoTimestamp: a.photoTimestamp || null
+    }))
   };
 }
 

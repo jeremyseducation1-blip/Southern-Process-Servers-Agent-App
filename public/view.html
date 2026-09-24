@@ -22,6 +22,22 @@
     background:#fff;
     margin-top:.3rem;
   }
+  .attempt-history{
+    margin-top:.4rem;
+    padding:.4rem .6rem;
+    background:#f3f0e8;
+    border:1px solid var(--rule);
+    border-radius:4px;
+  }
+  .attempt-history-title{
+    font-weight:bold;
+    font-size:.82rem;
+    margin-bottom:.2rem;
+  }
+  .attempt-history-line{
+    font-size:.8rem;
+    padding:.1rem 0;
+  }
   .filters{
     display:flex;
     flex-direction:column;
@@ -52,6 +68,11 @@
       </div>
 
       <div id="caseList"></div>
+    </section>
+
+    <section class="card" id="invoicesSection" hidden>
+      <h1>Invoices</h1>
+      <div id="invoicesList"></div>
     </section>
   </main>
 
@@ -85,6 +106,21 @@
             else if (c.returnSent) statusLabel = 'Returned — affidavit pending';
             else statusLabel = 'Open';
             const intake = c.intakeDate ? new Date(c.intakeDate).toLocaleDateString('en-US') : '';
+            const sortedAttempts = (c.attempts || []).slice().sort((a, b) => a.n - b.n);
+            const attemptHistory = sortedAttempts.length
+              ? `<div class="attempt-history">` +
+                `<div class="attempt-history-title">Attempts (${sortedAttempts.length}):</div>` +
+                sortedAttempts
+                  .map((a) => {
+                    const photoNote = a.hasPhoto
+                      ? ` · photo on file${a.photoTimestamp ? ', timestamped ' + new Date(a.photoTimestamp).toLocaleString('en-US') : ''}`
+                      : '';
+                    const noteText = a.note ? a.note.replace(/</g, '&lt;') : '(no note)';
+                    return `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoNote}</div>`;
+                  })
+                  .join('') +
+                `</div>`
+              : '';
             return `
               <div class="case-row">
                 <div class="case-style">${style}</div>
@@ -92,6 +128,7 @@
                 <div class="case-meta">${c.serviceAddress || ''}</div>
                 <div class="case-meta">Logged ${intake}</div>
                 <span class="status-pill">${statusLabel}${c.returnDate ? ' · Returned ' + c.returnDate : ''}</span>
+                ${attemptHistory}
               </div>`;
           })
           .join('');
@@ -140,6 +177,58 @@
         })
         .catch((err) => {
           subtitleEl.textContent = 'Could not load cases. (' + err.message + ')';
+        });
+
+      // Invoices -- only shows up at all for Kevin's ALL-scope link; a
+      // firm-scoped link gets an empty array back and this section just
+      // stays hidden.
+      const invoicesSection = document.getElementById('invoicesSection');
+      const invoicesListEl = document.getElementById('invoicesList');
+      fetch('/.netlify/functions/view-invoices?token=' + encodeURIComponent(token))
+        .then(async (res) => {
+          if (!res.ok) return { invoices: [] };
+          return res.json();
+        })
+        .then(({ invoices }) => {
+          if (!invoices || !invoices.length) return;
+          invoicesSection.hidden = false;
+          invoicesListEl.innerHTML = invoices
+            .map((inv) => {
+              const generated = inv.generated_at ? new Date(inv.generated_at).toLocaleString('en-US') : '';
+              const total = Number(inv.total || 0).toFixed(2);
+              return (
+                `<div class="case-row">` +
+                `<div class="case-style">${inv.week_label || inv.week_key}</div>` +
+                `<div class="case-meta">${inv.billable_count} case${inv.billable_count === 1 ? '' : 's'} — $${total} total</div>` +
+                `<div class="case-meta">Generated ${generated}</div>` +
+                `<button type="button" class="btn secondary view-invoice-btn" data-week="${inv.week_key}" style="margin-top:.4rem;">View PDF</button>` +
+                `</div>`
+              );
+            })
+            .join('');
+          invoicesListEl.querySelectorAll('.view-invoice-btn').forEach((btn) => {
+            btn.addEventListener('click', async () => {
+              const weekKey = btn.dataset.week;
+              const original = btn.textContent;
+              btn.disabled = true;
+              btn.textContent = 'Opening…';
+              try {
+                const res = await fetch('/.netlify/functions/get-invoice-pdf?week=' + encodeURIComponent(weekKey));
+                if (!res.ok) throw new Error(await res.text());
+                const { url } = await res.json();
+                window.open(url, '_blank');
+              } catch (err) {
+                alert('Failed to open invoice. (' + err.message + ')');
+              } finally {
+                btn.disabled = false;
+                btn.textContent = original;
+              }
+            });
+          });
+        })
+        .catch(() => {
+          // Silently ignore -- invoices are a bonus section, never block
+          // the main case list over it.
         });
     })();
   </script>

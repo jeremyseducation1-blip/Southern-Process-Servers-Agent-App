@@ -63,3 +63,22 @@ alter table cases add primary key (id);
 
 -- case_no is now just a normal indexed column (index already created
 -- above), not unique -- duplicates are expected and fine.
+
+-- ============================================================
+-- Invoices: logged record of every generated weekly invoice
+-- ============================================================
+-- Run this once (safe to re-run, uses IF NOT EXISTS). The PDF itself
+-- lives in a private "invoices" Storage bucket, created automatically
+-- by the app the first time it's needed -- nothing to set up manually
+-- for that part.
+
+create table if not exists invoices (
+  week_key text primary key,
+  week_label text,
+  billable_count integer not null default 0,
+  total numeric not null default 0,
+  pdf_path text,
+  generated_at timestamptz not null default now()
+);
+
+alter table invoices enable row level security;

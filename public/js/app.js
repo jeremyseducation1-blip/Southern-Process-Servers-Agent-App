@@ -362,6 +362,64 @@
     }
   }
 
+  // ---------- My Invoices -- persisted history of every generated invoice ----------
+  const loadInvoicesBtn = $('#loadInvoicesBtn');
+  const invoicesList = $('#invoicesList');
+
+  loadInvoicesBtn.addEventListener('click', async () => {
+    loadInvoicesBtn.disabled = true;
+    invoicesList.innerHTML = '<p class="hint">Loading…</p>';
+    try {
+      const res = await fetch('/.netlify/functions/list-invoices');
+      if (!res.ok) throw new Error(await res.text());
+      const { invoices } = await res.json();
+
+      if (!invoices.length) {
+        invoicesList.innerHTML = '<p class="hint">No invoices generated yet.</p>';
+        return;
+      }
+
+      invoicesList.innerHTML = invoices
+        .map((inv) => {
+          const generated = inv.generated_at ? new Date(inv.generated_at).toLocaleString('en-US') : '';
+          const total = Number(inv.total || 0).toFixed(2);
+          return (
+            `<div class="case-row">` +
+            `<div class="case-style">${inv.week_label || inv.week_key}</div>` +
+            `<div class="case-meta">${inv.billable_count} case${inv.billable_count === 1 ? '' : 's'} — $${total} total</div>` +
+            `<div class="case-meta">Generated ${generated}</div>` +
+            `<button type="button" class="btn secondary view-invoice-btn" data-week="${inv.week_key}" style="margin-top:.4rem;">View PDF</button>` +
+            `</div>`
+          );
+        })
+        .join('');
+
+      invoicesList.querySelectorAll('.view-invoice-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const weekKey = btn.dataset.week;
+          const original = btn.textContent;
+          btn.disabled = true;
+          btn.textContent = 'Opening…';
+          try {
+            const res = await fetch(`/.netlify/functions/get-invoice-pdf?week=${weekKey}`);
+            if (!res.ok) throw new Error(await res.text());
+            const { url } = await res.json();
+            window.open(url, '_blank');
+          } catch (err) {
+            alert('Failed to open invoice — try again. (' + err.message + ')');
+          } finally {
+            btn.disabled = false;
+            btn.textContent = original;
+          }
+        });
+      });
+    } catch (err) {
+      invoicesList.innerHTML = `<p class="status err">Failed to load invoices. (${err.message})</p>`;
+    } finally {
+      loadInvoicesBtn.disabled = false;
+    }
+  });
+
   // ---------- On-demand inventory PDF ----------
   const generateInventoryBtn = $('#generateInventoryBtn');
   generateInventoryBtn.addEventListener('click', async () => {
@@ -1152,8 +1210,19 @@
           })
         });
         if (!res.ok) throw new Error(await res.text());
-        saveStatus.textContent = `Saved — attempt ${n} logged for ${selectedCase.caseNo}.`;
+        saveStatus.textContent = `Saved — attempt ${n} logged for ${selectedCase.caseNo}. Ready for the next one.`;
         saveStatus.className = 'status ok';
+
+        // Clear the row out -- otherwise Jeremy has to manually erase
+        // everything before logging the next attempt, which is exactly
+        // the unnecessary step this button was supposed to remove.
+        dateInput.value = '';
+        noteInput.value = '';
+        photoInput.value = '';
+        photoLabel.textContent = 'Photo of notice (optional evidence)';
+        photoStatus.textContent = '';
+        attemptPhotoSaved[n] = false;
+
         evaluateAttempts();
         invalidatePreview();
         allCasesCache = null;

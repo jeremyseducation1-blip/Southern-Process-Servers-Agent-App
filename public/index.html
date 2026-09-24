@@ -118,6 +118,17 @@
       <div id="weekInvoiceList"></div>
     </section>
 
+    <!-- My Invoices -- the actual logged history of every invoice
+         that's gone out (on demand or the automatic Friday email),
+         with totals. This is the persistent record, not just a
+         PDF you can regenerate. -->
+    <section class="card">
+      <h2>My Invoices</h2>
+      <p class="hint">Every invoice that's actually been generated -- on demand or the automatic Friday 2pm send to Kevin -- with its total. Kevin sees this same list on his link.</p>
+      <button type="button" class="btn secondary" id="loadInvoicesBtn">Load invoices</button>
+      <div id="invoicesList"></div>
+    </section>
+
     <!-- On-demand inventory PDF -- same content as the automatic Sunday
          email to Kevin, but generated right now, no email. -->
     <section class="card">
@@ -140,8 +151,12 @@
       <div id="shareLinksList"></div>
     </section>
 
-    <!-- STEP 1: Return photo -- always available, independent of alias flow -->
-    <section class="card">
+    <!-- STEP 1: Return -- hidden for now (Jeremy's using "Mark returned"
+         from Search Cases instead, which is simpler and doesn't require
+         a PDF upload). Left in the DOM rather than deleted so the JS
+         wiring stays intact and this can be turned back on easily later
+         by just removing the hidden attribute. -->
+    <section class="card" id="returnCard" hidden>
       <h2>Return</h2>
       <p class="hint">Scan the served/returned paper in Genius Scan, export it as a PDF, then upload that PDF here. It attaches to this case right away — no email gets sent to Kevin from this step. <strong>Exception:</strong> for an alias case with Scott Weiss as attorney, this return still gets bundled and sent automatically when you send the affidavit below.</p>
 

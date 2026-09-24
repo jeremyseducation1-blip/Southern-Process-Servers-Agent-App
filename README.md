@@ -77,7 +77,14 @@ handles this automatically. If you ever see errors like "column cases.id does
 not exist" or "No case found with that id," it means that migration hasn't
 fully run — see the MIGRATION section in that file.
 
-## Return (Genius Scan → PDF upload, no email)
+## Return (Genius Scan → PDF upload, no email) -- currently hidden
+
+This whole section is hidden right now (Jeremy's using "Mark returned" from
+Search Cases instead — simpler, no PDF upload needed). The code and the
+Netlify functions behind it are untouched, just not shown — remove the
+`hidden` attribute on `#returnCard` in `public/index.html` to bring it back.
+
+Original behavior, if re-enabled:
 
 Scan the served/returned paper in Genius Scan, export it as a PDF, and upload
 it in the Return section (no in-app camera/scanning — Genius Scan already does
@@ -254,3 +261,40 @@ Every card's heading is click-to-expand/collapse (generic, not wired per
 section — new cards get this automatically). Case and Intake start open
 since those are used every time; everything else starts collapsed to cut
 down on scrolling past sections that aren't needed right now.
+
+## Kevin/firm share links now show attempt history too
+
+The Share Links view (view.html) now includes each case's attempt history
+(date, note, whether a photo exists and when it was taken) alongside the
+case-level status. It does not expose the actual photo image or your
+signature/stamp info -- just the record that an attempt happened and when.
+
+## Weekly invoice email (automatic, Friday 2pm)
+
+A scheduled function (`weekly-invoice-email.js`) emails Kevin every Friday
+at 2:00 PM Central: the same $60-per-case invoice as the on-demand button,
+for whatever's been served as of that moment. Since Kevin does payroll ACH
+Friday afternoon, this fires before the work week is technically over --
+anything served later Friday evening or over the weekend automatically
+rolls onto the *following* week's invoice instead, since the week is
+computed fresh at send time.
+
+Cron is `0 19 * * 5`, targeting 2:00 PM Central. Same DST caveat as the
+Sunday inventory email -- cron doesn't auto-adjust, so this needs a manual
+flip twice a year: `0 20 * * 5` for 2pm CST (roughly early
+November -- mid March), back to `0 19 * * 5` for 2pm CDT (roughly
+mid-March -- early November).
+
+## Invoices are logged, not just generated
+
+Every invoice -- whether from the on-demand "Weekly Invoice" button or the
+automatic Friday email -- gets logged: the PDF saved to a private
+`invoices` Storage bucket, and a row (week, case count, total, when it was
+generated) saved to an `invoices` table. "My Invoices" in the app lists
+the full history with a "View PDF" button per week. Kevin's share link
+(only the `ALL`-scope one, not individual firm links -- invoices aren't
+firm-specific) shows this same list.
+
+Regenerating the same week's invoice (e.g. re-running it on demand after
+the automatic send already fired) just replaces that week's logged record
+-- there's always exactly one invoice per week, not a pile of duplicates.

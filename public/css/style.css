@@ -332,3 +332,43 @@ textarea{resize:vertical;}
   font-size:.85rem;
   white-space:pre-wrap;
 }
+
+/* Collapsible sections -- click any card's heading to expand/collapse it.
+   Works generically off the h2, so no per-section markup was needed. */
+.card > h2{
+  cursor:pointer;
+  user-select:none;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+}
+.card > h2::after{
+  content:"▾";
+  font-size:.8em;
+  color:var(--brand);
+  margin-left:.6rem;
+  transition:transform .15s ease;
+}
+.card.collapsed > h2::after{
+  transform:rotate(-90deg);
+}
+.card.collapsed > *:not(h2){
+  display:none;
+}
+
+.attempt-history{
+  margin-top:.4rem;
+  padding:.4rem .6rem;
+  background:#f3f0e8;
+  border:1px solid var(--rule);
+  border-radius:4px;
+}
+.attempt-history-title{
+  font-weight:bold;
+  font-size:.82rem;
+  margin-bottom:.2rem;
+}
+.attempt-history-line{
+  font-size:.8rem;
+  padding:.1rem 0;
+}

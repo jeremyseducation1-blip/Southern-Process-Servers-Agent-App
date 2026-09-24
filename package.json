@@ -7,6 +7,7 @@
     "@netlify/functions": "^2.8.2",
     "@supabase/supabase-js": "^2.116.0",
     "googleapis": "^140.0.1",
+    "jsdom": "^30.1.1",
     "pdf-lib": "^1.17.1"
   }
 }

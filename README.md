@@ -181,16 +181,37 @@ address, and status — never signatures, photos, or your stamp info.
   `netlify/functions/lib/buildAffidavitPdf.js`.
 - Signature storage is per-device — each device needs its own one-time setup.
 
-## Attempt photo evidence (yellow door notices)
+## Attempts and photo evidence (completely separate from affidavits)
 
-Each of the 3 attempts on an alias case can optionally have a photo attached
-— e.g. the yellow notice left on the door. It saves immediately (storage +
-case record) the moment you take the photo, stamped with the server's own
-timestamp (not just the phone's clock), so there's independent evidence of
-when the attempt actually happened, not just the handwritten date and note.
-Written notes stay as the required primary record; photos are backup
-evidence layered on top, optional per attempt. Search Cases shows a "View
-attempt N photo" button for any case that has one.
+Every case can have up to 3 attempts logged (date + note), independent of
+whether it ever needs an affidavit — a case served on the first try never
+gets any attempts logged at all; a case that takes 3 tries gets all 3
+before it's ever an alias/affidavit matter. Attempts are always visible
+under "Attempts" -- not gated behind the alias checkbox.
+
+A photo can optionally be attached to any attempt -- e.g. the yellow notice
+left on the door. It saves immediately (storage + case record) the moment
+you take it, stamped with the server's own timestamp (not the phone's
+clock), independent evidence of when the attempt happened. Photos are
+**pure logging evidence and have nothing to do with the affidavit** --
+they don't gate the status dropdown, aren't required to send anything, and
+are never embedded in the affidavit PDF. A dropdown (or type it in
+directly) picks which case a photo attaches to, since attempts often get
+logged for several cases in one sitting.
+
+Search Cases shows the full attempt history for every case (date, note,
+and photo timestamp if one exists) directly in the result -- not just a
+photo button -- so you can see at a glance how many attempts a case took
+and when, whether or not it ever became an affidavit.
+
+## Phone numbers (data collection)
+
+Every case has a "Phone numbers" field (Case section, one per line) for any
+number tied to that case -- a list an attorney like a medical-collections
+firm hands you upfront, or a number that shows up when a defendant calls
+back after finding a notice. Shown directly in Search Cases, searchable
+like everything else, editable later via Edit if a new number turns up
+mid-case.
 
 ## Special notes (intake and return)
 
@@ -223,3 +244,10 @@ record, clearly separated from the actual invoice total.
 
 The rate is a single constant (`RATE_PER_CASE` in
 `netlify/functions/week-invoice-pdf.js`) if it ever needs to change.
+
+## Collapsible sections
+
+Every card's heading is click-to-expand/collapse (generic, not wired per
+section — new cards get this automatically). Case and Intake start open
+since those are used every time; everything else starts collapsed to cut
+down on scrolling past sections that aren't needed right now.

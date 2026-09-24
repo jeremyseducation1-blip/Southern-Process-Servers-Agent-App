@@ -13,6 +13,24 @@
 (function () {
   const $ = (sel) => document.querySelector(sel);
 
+  // ---------- Collapsible sections ----------
+  // Every card with an <h2> becomes click-to-expand/collapse -- generic,
+  // not wired per-section, so new cards get this for free. Case and
+  // Intake start open (the two things used every single time); everything
+  // else starts collapsed to cut down on the clutter of scrolling past
+  // sections that aren't needed right now.
+  const OPEN_BY_DEFAULT = ['Case', 'Intake'];
+  document.querySelectorAll('.card').forEach((card) => {
+    const heading = card.querySelector('h2');
+    if (!heading) return;
+    if (!OPEN_BY_DEFAULT.includes(heading.textContent.trim())) {
+      card.classList.add('collapsed');
+    }
+    heading.addEventListener('click', () => {
+      card.classList.toggle('collapsed');
+    });
+  });
+
   const state = {
     returnSent: false,
     signature: JSON.parse(localStorage.getItem('serverSignature') || 'null')
@@ -408,6 +426,26 @@
               `<button type="button" class="btn secondary view-attempt-photo-btn" data-id="${c.id}" data-attempt="${a.n}" style="margin-top:.4rem;">View attempt ${a.n} photo</button>`
           )
           .join('');
+        // Attempt history -- separate from and unrelated to the affidavit.
+        // Some cases never need an affidavit at all (served on the first
+        // try, just a return); others take several attempts before an
+        // affidavit ever comes into it. Either way, every attempt that's
+        // been logged shows up here.
+        const sortedAttempts = (c.attempts || []).slice().sort((a, b) => a.n - b.n);
+        const attemptHistory = sortedAttempts.length
+          ? `<div class="attempt-history">` +
+            `<div class="attempt-history-title">Attempts logged (${sortedAttempts.length}):</div>` +
+            sortedAttempts
+              .map((a) => {
+                const photoTs = a.photoTimestamp
+                  ? ` · photo timestamped ${new Date(a.photoTimestamp).toLocaleString('en-US')}`
+                  : '';
+                const noteText = a.note ? `${a.note.replace(/</g, '&lt;')}` : '(no note)';
+                return `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}</div>`;
+              })
+              .join('') +
+            `</div>`
+          : '';
         // A case that's still open with no return on file yet -- the
         // thing Jeremy specifically wants surfaced, not buried in a status word.
         const missingReturnNote =
@@ -435,6 +473,9 @@
             (c.returnNotes ? `📦 Return note: ${c.returnNotes.replace(/</g, '&lt;')}` : '') +
             `</div>`
           : '';
+        const phoneBlock = c.phoneNumbers
+          ? `<div class="case-notes">📞 ${c.phoneNumbers.replace(/</g, '&lt;').replace(/\n/g, '<br>')}</div>`
+          : '';
         return (
           `<div class="case-row" data-case-row="${c.id}">` +
           `<div class="case-style">${style}</div>` +
@@ -444,7 +485,9 @@
           `<span class="status-pill">${statusLabel}</span>` +
           missingReturnNote +
           notesBlock +
+          phoneBlock +
           defendantBreakdown +
+          attemptHistory +
           `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${editBtn}</div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
           `</div>`
@@ -489,6 +532,7 @@
           <label>Service address <input type="text" class="edit-serviceAddress" value="${c.serviceAddress || ''}"></label>
           <label>Attorney <input type="text" class="edit-attorney" value="${c.attorney || ''}"></label>
           <label>Special notes <textarea class="edit-notes" rows="3">${c.notes || ''}</textarea></label>
+          <label>Phone numbers <textarea class="edit-phoneNumbers" rows="2">${c.phoneNumbers || ''}</textarea></label>
           <label><input type="checkbox" class="edit-isAlias" ${c.isAlias ? 'checked' : ''}> This is an alias summons</label>
           <div class="sig-actions">
             <button type="button" class="btn primary save-edit-btn">Save changes</button>
@@ -524,6 +568,7 @@
             serviceAddress: formEl.querySelector('.edit-serviceAddress').value.trim(),
             attorney: formEl.querySelector('.edit-attorney').value.trim(),
             notes: formEl.querySelector('.edit-notes').value.trim(),
+            phoneNumbers: formEl.querySelector('.edit-phoneNumbers').value.trim(),
             isAlias: formEl.querySelector('.edit-isAlias').checked
           };
 
@@ -649,7 +694,7 @@
       try {
         const cases = await ensureAllCasesLoaded();
         const matches = cases.filter((c) => {
-          const haystack = [c.defendant, c.plaintiff, c.caseNo, c.caseType, c.serviceAddress, c.notes, c.returnNotes, ...(c.defendants || []).map((d) => d.name)]
+          const haystack = [c.defendant, c.plaintiff, c.caseNo, c.caseType, c.serviceAddress, c.notes, c.returnNotes, c.phoneNumbers, ...(c.defendants || []).map((d) => d.name)]
             .filter(Boolean)
             .join(' ')
             .toLowerCase();
@@ -762,6 +807,7 @@
     $('#serviceAddress').value = '';
     $('#attorney').value = 'Scott Weiss';
     $('#caseNotes').value = '';
+    $('#casePhoneNumbers').value = '';
     $('#isAlias').checked = false;
     $('#isAlias').dispatchEvent(new Event('change'));
     // Court/county/state are left alone -- those tend to stay the same
@@ -1159,6 +1205,7 @@
       serviceAddress: $('#serviceAddress').value.trim(),
       attorney: $('#attorney').value.trim() || 'Scott Weiss',
       notes: $('#caseNotes').value.trim(),
+      phoneNumbers: $('#casePhoneNumbers').value.trim(),
       isAlias: $('#isAlias').checked
     };
   }

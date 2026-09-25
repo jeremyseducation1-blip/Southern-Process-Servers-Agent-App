@@ -68,41 +68,32 @@
           This is an alias summons
         </label>
       </div>
-    </section>
 
-    <!-- STEP 0.5: Intake scan -- fires the moment the paper is received,
-         before any attempts are made. Creates the case record everything
-         else (attempts, return, weekly inventory) hangs off of. -->
-    <section class="card">
-      <h2>Intake</h2>
-      <p class="hint">Enter the warrant/summons info as soon as you receive it. This creates the case record for your own tracking — Kevin isn't notified at this step.</p>
+      <!-- Intake, merged into Case -- just a button, not its own section. -->
+      <p class="hint">Enter the warrant/summons info above as soon as you receive it, then log it. Kevin isn't notified at this step.</p>
       <button type="button" class="btn primary" id="sendIntakeBtn">Log intake</button>
       <p class="status" id="intakeStatus"></p>
-    </section>
 
-    <!-- Case search -- find any case fast (defendant, plaintiff, case
-         number, or address) instead of digging through old photos when
-         a firm or Kevin calls asking about something from months back. -->
-    <section class="card">
-      <h2>Search Cases</h2>
+      <!-- Search Cases, merged into Case -- find any case fast instead of
+           digging through old photos when a firm or Kevin calls asking
+           about something from months back. -->
       <p class="hint">Search by defendant, plaintiff, case number, or address — matches everything you've ever logged, open or closed.</p>
       <input type="text" id="caseSearchInput" placeholder="e.g. Tello, or 26GC8832, or Delta Queen Dr">
       <div id="caseSearchResults"></div>
     </section>
 
-    <!-- Weekly log -- Jeremy's own view of papers received, grouped by
-         the Monday of the week they came in. Read-only, not sent anywhere. -->
+    <!-- Logs -- Jeremy's own record-keeping views. Weekly (by week
+         received) and Monthly (still-open cases by month) live together
+         here as one card instead of two separate sections. -->
     <section class="card">
-      <h2>My Weekly Log</h2>
+      <h2>Logs</h2>
+
+      <h3>Weekly Log</h3>
       <p class="hint">Every case you've logged, grouped by the week it was received.</p>
       <button type="button" class="btn secondary" id="loadLogBtn">Load log</button>
       <div id="weeklyLog"></div>
-    </section>
 
-    <!-- Monthly report -- clickable months, each opening a PDF listing
-         every case still open that was logged that month. -->
-    <section class="card">
-      <h2>Monthly Open-Case Report</h2>
+      <h3>Monthly Open-Case Report</h3>
       <p class="hint">Tap a month to open a fresh PDF listing every case still open from that month.</p>
       <button type="button" class="btn secondary" id="loadMonthReportBtn">Load months</button>
       <div id="monthReportList"></div>
@@ -219,6 +210,24 @@
         </div>
       </div>
 
+      <!-- Signature & stamp setup, merged into Affidavit -- one-time
+           per device, not its own top-level section. -->
+      <div id="sigSetupCard">
+        <h3>Server signature &amp; stamp</h3>
+        <p class="hint">Sign once — it's saved on this device and reused on every affidavit.</p>
+        <canvas id="sigPad" width="600" height="180"></canvas>
+        <div class="sig-actions">
+          <button type="button" class="btn secondary" id="clearSig">Clear</button>
+          <button type="button" class="btn primary" id="saveSig">Save signature</button>
+        </div>
+        <div class="grid-2">
+          <label>Server name <input type="text" id="serverName" placeholder="Jeremy Williams"></label>
+          <label>Server phone <input type="text" id="serverPhone" placeholder="615-479-1334"></label>
+          <label>PO Box <input type="text" id="serverBox" placeholder="PO Box 292997"></label>
+          <label>City/State/ZIP <input type="text" id="serverCityState" placeholder="Nashville, TN 37229"></label>
+        </div>
+      </div>
+
       <button type="button" class="btn secondary" id="previewAffidavitBtn" disabled>Preview affidavit</button>
 
       <div id="affidavitPreviewStage" hidden>
@@ -227,23 +236,6 @@
 
       <button type="button" class="btn primary" id="completeAffidavitBtn" disabled>Send affidavit to Kevin</button>
       <p class="status" id="affidavitStatus"></p>
-    </section>
-
-    <!-- Signature setup, one-time -->
-    <section class="card" id="sigSetupCard">
-      <h2>Server signature &amp; stamp</h2>
-      <p class="hint">Sign once — it's saved on this device and reused on every affidavit.</p>
-      <canvas id="sigPad" width="600" height="180"></canvas>
-      <div class="sig-actions">
-        <button type="button" class="btn secondary" id="clearSig">Clear</button>
-        <button type="button" class="btn primary" id="saveSig">Save signature</button>
-      </div>
-      <div class="grid-2">
-        <label>Server name <input type="text" id="serverName" placeholder="Jeremy Williams"></label>
-        <label>Server phone <input type="text" id="serverPhone" placeholder="615-479-1334"></label>
-        <label>PO Box <input type="text" id="serverBox" placeholder="PO Box 292997"></label>
-        <label>City/State/ZIP <input type="text" id="serverCityState" placeholder="Nashville, TN 37229"></label>
-      </div>
     </section>
 
     <p style="text-align:center;font-size:.75rem;color:#999;margin-top:1rem;">Build: 2026-09-09 — return/affidavit PDF conversion, search, share links</p>

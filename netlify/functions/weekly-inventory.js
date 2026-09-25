@@ -1,10 +1,18 @@
 const { schedule } = require('@netlify/functions');
-const { listOpenCases } = require('./lib/caseStore');
+const { PDFDocument } = require('pdf-lib');
+const { buildWeekInvoicePdf, mondayOfWeek } = require('./lib/buildWeekInvoicePdf');
+const { buildInventoryPdf } = require('./lib/buildInventoryPdf');
+const { saveInvoiceRecord } = require('./lib/invoiceStore');
 const { sendGmail } = require('./lib/sendGmail');
 
 const KEVIN_EMAIL = process.env.KEVIN_EMAIL || 'kevin@example.com';
 
-// Runs every Sunday at 8:00 AM Central time.
+// Runs every Sunday at 8:00 AM Central time -- one email to Kevin with
+// ONE combined PDF: the invoice for the week that just finished
+// (Monday through Sunday morning), followed by the current open-case
+// inventory. Kevin wants these together in a single document, not two
+// separate emails.
+//
 // Netlify's scheduled functions use UTC cron, with no DST awareness, so
 // this has to be manually flipped twice a year:
 //   - CDT (roughly mid-March -- early November): use 13:00 UTC for 8am Central
@@ -12,45 +20,50 @@ const KEVIN_EMAIL = process.env.KEVIN_EMAIL || 'kevin@example.com';
 // Right now (as of this deploy) it's set to 13:00 UTC, which lands at
 // 8:00 AM CDT. See README for the toggle note.
 const handler = async () => {
-  const openCases = await listOpenCases();
+  const today = new Date().toISOString().slice(0, 10);
+  // Running Sunday morning, mondayOfWeek(today) lands on the Monday that
+  // started THIS week -- so this correctly covers the week that just
+  // finished, not the one about to start.
+  const weekKey = mondayOfWeek(today).toISOString().slice(0, 10);
 
-  // Numbered, not sorted by case number -- just list order as stored.
-  const lines = openCases.map((c, i) => {
-    const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
-    const attorneyLastName = (c.attorney || '').trim().split(/\s+/).slice(-1)[0] || c.attorney;
+  const { pdfBuffer: invoicePdfBuffer, billableCount, total, weekLabel } = await buildWeekInvoicePdf(weekKey);
 
-    // Multi-defendant cases: only list the defendant(s) still outstanding,
-    // not ones already served.
-    let defendantNote = '';
-    if (Array.isArray(c.defendants) && c.defendants.length > 1) {
-      const outstanding = c.defendants.filter((d) => !d.served).map((d) => d.name);
-      if (outstanding.length) {
-        defendantNote = ` (outstanding: ${outstanding.join(', ')})`;
-      }
-    }
+  // Log the invoice the same way the on-demand button and the old Friday
+  // email did -- "My Invoices" / Kevin's invoice history stays intact.
+  await saveInvoiceRecord({ weekKey, weekLabel, billableCount, total, pdfBuffer: invoicePdfBuffer });
 
-    // Still open (affidavit tracking not done yet) but the return itself
-    // already went out -- flag that so it doesn't read the same as a
-    // case nobody's touched yet.
-    const returnNote = c.returnSent
-      ? ` [Return sent${c.returnDate ? ' ' + c.returnDate : ''} — affidavit still pending]`
-      : '';
+  const { pdfDoc: inventoryDoc, openCount } = await buildInventoryPdf();
 
-    return `${i + 1}. ${style} — Case No. ${c.caseNo || 'N/A'} — ${attorneyLastName}${defendantNote}${returnNote}`;
-  });
+  // Merge into one combined PDF: invoice pages first, then inventory.
+  const combined = await PDFDocument.create();
+  const invoiceDoc = await PDFDocument.load(invoicePdfBuffer);
+  const invoicePages = await combined.copyPages(invoiceDoc, invoiceDoc.getPageIndices());
+  invoicePages.forEach((p) => combined.addPage(p));
+  const inventoryPages = await combined.copyPages(inventoryDoc, inventoryDoc.getPageIndices());
+  inventoryPages.forEach((p) => combined.addPage(p));
+  const combinedBytes = await combined.save();
+  const combinedBuffer = Buffer.from(combinedBytes);
 
-  const text = openCases.length
-    ? `Weekly inventory — open cases as of ${new Date().toLocaleDateString()}\n\n${lines.join('\n')}`
-    : `Weekly inventory — no open cases this week.`;
+  const dateLabel = new Date().toLocaleDateString('en-US');
+  const text =
+    `Attached: invoice for ${weekLabel}, plus the current open-case inventory.\n\n` +
+    `Invoice: ${billableCount} case${billableCount === 1 ? '' : 's'} served, total $${total.toFixed(2)}.\n` +
+    `Inventory: ${openCount} case${openCount === 1 ? '' : 's'} currently open.`;
 
   await sendGmail({
     to: KEVIN_EMAIL,
-    subject: `Weekly Inventory — ${new Date().toLocaleDateString()}`,
+    subject: `Weekly Invoice & Inventory — ${dateLabel}`,
     text,
-    attachments: []
+    attachments: [
+      {
+        filename: `invoice-and-inventory-${weekKey}.pdf`,
+        mimeType: 'application/pdf',
+        base64: combinedBuffer.toString('base64')
+      }
+    ]
   });
 
-  return { statusCode: 200, body: 'Inventory sent' };
+  return { statusCode: 200, body: 'Invoice + inventory sent' };
 };
 
 exports.handler = schedule('0 13 * * 0', handler);

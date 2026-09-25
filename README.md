@@ -56,12 +56,13 @@ returned manually — is silent, local record-keeping only.
   when that gets sent — so it still reaches Kevin, just riding along with the
   affidavit instead of firing on its own.
 
-## Intake
+## Intake and Search Cases -- both live under "Case" now
 
 Manual entry — case number, document type, plaintiff, defendant(s), attorney,
-alias checkbox. Creates the case record everything else hangs off of. Fields
-clear automatically after a successful log so the form's ready for the next
-paper.
+alias checkbox. "Log intake" is just a button at the bottom of the Case
+card (not its own section) -- fills in the case record, clears the fields
+afterward so it's ready for the next paper. Search Cases is right below
+that, in the same card -- one place for entering a case and finding one.
 
 ## Case numbers repeat — papers, not cases
 
@@ -149,13 +150,21 @@ type — matches everything ever logged, open or closed. Each result shows:
 All of these paginate correctly past 12+ entries (multi-page PDFs), and none
 of them send email — they're for your own records or to hand off manually.
 
-## Weekly inventory email (automatic, Sunday 8am)
+## Weekly invoice + inventory email (automatic, Sunday 8am)
 
-A scheduled function (`weekly-inventory.js`) emails Kevin every Sunday: a
-numbered list of every case still open, case style + case number + attorney's
-last name, with outstanding defendant(s) called out for multi-defendant cases
-and a note when a return's already gone out but the affidavit's still
-pending.
+A single scheduled function (`weekly-inventory.js`) emails Kevin every Sunday
+at 8am: ONE combined PDF with the invoice for the week that just finished
+(page 1) followed by the current open-case inventory (page 2+). This used to
+be two separate things (a Friday invoice email and a Sunday inventory email)
+-- Kevin asked for it back to one Sunday send with a single attached PDF, so
+that's what this does now.
+
+Invoice page: same $60-per-case billing as the on-demand "Weekly Invoice"
+button, logged the same way (shows up in "My Invoices" / Kevin's invoice
+history). Inventory page: numbered list of every case still open, case style
++ case number + attorney's last name, with outstanding defendant(s) called
+out for multi-defendant cases and a note when a return's already gone out
+but the affidavit's still pending.
 
 Cron is `0 13 * * 0`, targeting 8:00 AM Central. Cron doesn't auto-adjust for
 DST, so this needs a manual flip twice a year: `0 14 * * 0` for 8am CST
@@ -215,12 +224,13 @@ at a glance how many attempts a case took and when.
 
 ## Affidavit (reads attempts already logged, doesn't re-collect them)
 
-The "Affidavit" card no longer has its own attempt-entry fields. Instead:
+The "Affidavit" card no longer has its own attempt-entry fields, and the
+signature/stamp setup lives inside it too (not a separate section) --
 type the case number + defendant into the Case section (same as always),
 hit **"Check attempts for this case"** -- it pulls whatever's already been
 logged via Search Cases, and if all 3 are valid (date + note, no future
 dates), the status dropdown unlocks. From there it's the same as before:
-pick a status, preview, send.
+pick a status, sign once (or reuse the saved signature), preview, send.
 
 ## Phone numbers (data collection)
 
@@ -277,22 +287,6 @@ The Share Links view (view.html) now includes each case's attempt history
 case-level status. It does not expose the actual photo image or your
 signature/stamp info -- just the record that an attempt happened and when.
 
-## Weekly invoice email (automatic, Friday 2pm)
-
-A scheduled function (`weekly-invoice-email.js`) emails Kevin every Friday
-at 2:00 PM Central: the same $60-per-case invoice as the on-demand button,
-for whatever's been served as of that moment. Since Kevin does payroll ACH
-Friday afternoon, this fires before the work week is technically over --
-anything served later Friday evening or over the weekend automatically
-rolls onto the *following* week's invoice instead, since the week is
-computed fresh at send time.
-
-Cron is `0 19 * * 5`, targeting 2:00 PM Central. Same DST caveat as the
-Sunday inventory email -- cron doesn't auto-adjust, so this needs a manual
-flip twice a year: `0 20 * * 5` for 2pm CST (roughly early
-November -- mid March), back to `0 19 * * 5` for 2pm CDT (roughly
-mid-March -- early November).
-
 ## Invoices are logged, not just generated
 
 Every invoice -- whether from the on-demand "Weekly Invoice" button or the
@@ -315,3 +309,16 @@ Weekly Log / Monthly Report PDFs -- open cases show **red**, closed
 (Served, Return Not Found, Return Requested per Plaintiff all read as
 green once closed). No running tally/count anywhere -- just the color, so
 it's a glance, not a count.
+
+## Return + affidavit hand-off (Scott Weiss alias cases)
+
+Marking a case returned in Search Cases does NOT automatically send an
+affidavit email -- that would skip your judgment call on which status
+applies (No response / Evading / Vacant / Bad address). Instead: if the
+case is an alias summons with Scott Weiss as attorney AND all 3 attempts
+are already logged, a confirmation prompt appears right after marking it
+returned, offering to jump straight to the Affidavit section with that
+case's info already filled in and its attempts already checked -- ready to
+just pick a status and send. Declining the prompt, or a case that doesn't
+meet both conditions, changes nothing; marking returned always completes
+silently either way.

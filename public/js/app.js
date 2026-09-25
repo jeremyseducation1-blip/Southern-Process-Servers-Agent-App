@@ -19,7 +19,7 @@
   // Intake start open (the two things used every single time); everything
   // else starts collapsed to cut down on the clutter of scrolling past
   // sections that aren't needed right now.
-  const OPEN_BY_DEFAULT = ['Case', 'Intake'];
+  const OPEN_BY_DEFAULT = ['Case'];
   document.querySelectorAll('.card').forEach((card) => {
     const heading = card.querySelector('h2');
     if (!heading) return;
@@ -80,7 +80,7 @@
     state.signature = { dataUrl: pad.toDataURL() };
     localStorage.setItem('serverSignature', JSON.stringify(state.signature));
     refreshSigPreview();
-    $('#sigSetupCard').querySelector('h2').scrollIntoView({ behavior: 'smooth' });
+    $('#sigSetupCard').querySelector('h3').scrollIntoView({ behavior: 'smooth' });
   });
 
   $('#goSetupSig')?.addEventListener('click', (e) => {
@@ -835,6 +835,37 @@
           });
           if (!res.ok) throw new Error(await res.text());
           allCasesCache = null;
+
+          // Alias + Scott Weiss cases still need the affidavit, even
+          // once returned. If all 3 attempts are already logged, offer
+          // to jump straight to finishing it -- nothing sends without an
+          // explicit yes here, this just saves the retyping.
+          const isAliasWeiss = c?.isAlias && (c.attorney || '').trim().toLowerCase() === 'scott weiss';
+          if (isAliasWeiss && attemptsAreComplete(c.attempts)) {
+            const goNow = confirm(
+              `${c.caseNo} is an alias case for Scott Weiss with all 3 attempts already logged.\n\n` +
+              `Open the Affidavit section now to pick a status and send it to Kevin?`
+            );
+            if (goNow) {
+              $('#caseNo').value = c.caseNo || '';
+              $('#plaintiff').value = c.plaintiff || '';
+              $('#defendant').value = c.defendant || '';
+              $('#extraDefendants').value = (c.defendants || [])
+                .map((d) => d.name)
+                .filter((name) => name && name !== c.defendant)
+                .join(', ');
+              $('#serviceAddress').value = c.serviceAddress || '';
+              $('#attorney').value = c.attorney || '';
+              $('#caseType').value = c.caseType || '';
+              $('#isAlias').checked = true;
+
+              attemptsCard.classList.remove('collapsed');
+              attemptsCard.querySelector('h2').scrollIntoView({ behavior: 'smooth' });
+              checkAttemptsBtn.click();
+              return; // skip the re-search refresh below -- we're navigating away from this result
+            }
+          }
+
           caseSearchInput.dispatchEvent(new Event('input'));
         } catch (err) {
           alert('Failed to update — try again. (' + err.message + ')');
@@ -1161,6 +1192,20 @@
   function todayStr() {
     const d = new Date();
     return d.toISOString().slice(0, 10);
+  }
+
+  // Shared validation: all 3 attempts present, each with a date + note,
+  // none in the future. Used both by "Check attempts" and by the
+  // mark-returned prompt (to know whether to offer jumping to the
+  // affidavit right then).
+  function attemptsAreComplete(attempts) {
+    const today = todayStr();
+    const futureDateFound = (attempts || []).some((a) => a.date && a.date > today);
+    if (futureDateFound) return false;
+    return [1, 2, 3].every((n) => {
+      const a = (attempts || []).find((x) => x.n === n);
+      return a && a.date && a.note && a.date <= today;
+    });
   }
 
   // Pulls the current case's logged attempts from the server (whatever's

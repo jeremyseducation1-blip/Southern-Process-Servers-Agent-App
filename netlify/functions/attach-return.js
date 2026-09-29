@@ -67,13 +67,15 @@ exports.handler = async (event) => {
       existing.returnOutcome = returnOutcome || 'Served';
 
       // Only close the case once every defendant on it has actually been
-      // served. Affidavit-tracked cases (alias + Scott Weiss) stay
-      // governed by the affidavit completion event regardless.
+      // served. Marking a return always has the power to close the case
+      // out -- even alias/Scott Weiss ones -- since the affidavit may
+      // already be handled separately; it shouldn't stay stuck open just
+      // because it's alias-tracked.
       const allServed =
         !Array.isArray(existing.defendants) ||
         existing.defendants.length === 0 ||
         existing.defendants.every((d) => d.served);
-      if (!existing.needsAffidavitTracking && allServed) {
+      if (allServed) {
         existing.status = 'closed';
         existing.closedDate = new Date().toISOString();
       }

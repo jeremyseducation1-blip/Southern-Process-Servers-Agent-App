@@ -36,7 +36,12 @@ exports.handler = async (event) => {
       !Array.isArray(existing.defendants) ||
       existing.defendants.length === 0 ||
       existing.defendants.every((d) => d.served);
-    if (!existing.needsAffidavitTracking && allServed) {
+    // Marking returned always has the power to close the case out --
+    // even alias/Scott Weiss ones -- because sometimes the affidavit's
+    // already been handled (sent earlier, or outside the app entirely).
+    // This is what actually takes a case off the inventory; it shouldn't
+    // stay stuck open just because it happens to be an alias case.
+    if (allServed) {
       existing.status = 'closed';
       existing.closedDate = new Date().toISOString();
     }

@@ -12,11 +12,20 @@
 
 const { google } = require('googleapis');
 
+// Email subject headers are technically limited to US-ASCII -- any
+// literal non-ASCII character (an em dash, curly quotes, etc.) has to be
+// RFC 2047 encoded, or mail clients render mojibake like "Ã¢Â€Â""
+// instead of the actual character. Base64-encoding the whole subject
+// sidesteps having to detect which characters need it.
+function encodeSubject(subject) {
+  return `=?UTF-8?B?${Buffer.from(subject, 'utf8').toString('base64')}?=`;
+}
+
 function buildRawMessage({ to, subject, text, attachments }) {
   const boundary = 'affidavit_boundary_' + Date.now();
   const headers = [
     `To: ${to}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodeSubject(subject)}`,
     'MIME-Version: 1.0',
     `Content-Type: multipart/mixed; boundary="${boundary}"`
   ].join('\r\n');

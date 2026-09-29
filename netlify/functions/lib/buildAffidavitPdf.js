@@ -9,9 +9,9 @@ const ORDINALS = { 1: 'First', 2: 'Second', 3: 'Third' };
 
 const CLOSING_STATEMENT = {
   'No response': 'It is my knowledge and belief that the Defendant has not responded to service of process.',
-  'Evading service': 'It is my knowledge and belief that the Defendant is evading service of process.',
-  'Vacant home': 'It is my knowledge and belief that the address provided is a vacant property.',
-  'Bad address': 'It is my knowledge and belief that the address provided is not a valid address for the Defendant.'
+  'Evading service': 'It is to my knowledge and belief that the Defendant is evading service.',
+  'Vacant home': "It is to my knowledge and belief that the Defendant's address is vacant.",
+  'Bad address': 'It is my knowledge and belief that the Defendant does not reside at the address provided.'
 };
 
 // Splits "3013 Delta Queen Dr, Nashville, TN 37214" into a street line and
@@ -37,6 +37,15 @@ function wrapText(text, font, size, maxWidth) {
   }
   if (current) lines.push(current);
   return lines;
+}
+
+// Converts an ISO date (YYYY-MM-DD, from the date picker) to the short
+// M/D/YY format the court paperwork actually uses (e.g. "9/23/26").
+function formatShortDate(isoDate) {
+  if (!isoDate) return '';
+  const [y, m, d] = isoDate.split('-').map(Number);
+  if (!y || !m || !d) return isoDate; // not ISO / malformed -- print as-is rather than hide it
+  return `${m}/${d}/${String(y).slice(-2)}`;
 }
 
 async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl, serverInfo }) {
@@ -69,7 +78,7 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   const courtType = caseInfo.courtType || '';
 
   // ---- Caption header ----
-  centered(`IN THE ${courtType} COURT OF ${county} COUNTY, ${state.toUpperCase()}`, 12, bold);
+  centered(`IN THE ${courtType} COURT OF ${county} COUNTY, ${state.toUpperCase()}`, 12, font);
   y -= 22;
 
   // ---- Party caption block with bracket ----
@@ -200,7 +209,7 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   attempts.forEach((a) => {
     const ordinal = ORDINALS[a.n] || `${a.n}th`;
     const noteText = (a.note || '').trim() || 'A notice was left and photographed as evidence of this attempt.';
-    const sentence = `${ordinal} attempt was made on ${a.date}. ${noteText}`.trim();
+    const sentence = `${ordinal} attempt was made on ${formatShortDate(a.date)}. ${noteText}`.trim();
     const lines = wrapText(sentence, font, 11, valueWidth);
     lines.forEach((ln) => {
       page.drawText(ln, { x: valueX, y: attemptY, size: 11, font });

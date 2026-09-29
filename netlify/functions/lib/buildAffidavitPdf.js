@@ -78,7 +78,27 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   const courtType = caseInfo.courtType || '';
 
   // ---- Caption header ----
-  centered(`IN THE ${courtType} COURT OF ${county} COUNTY, ${state.toUpperCase()}`, 12, font);
+  // "IN THE [court type] COURT OF [county] COUNTY, [STATE]" -- court
+  // type and county render as underlined blanks (matching the rest of
+  // the form's fill-in-the-blank style), not just plain text.
+  (function drawCaptionHeader() {
+    const size = 12;
+    const segments = [
+      { str: 'IN THE ', underlined: false },
+      { str: courtType, underlined: true },
+      { str: ' COURT OF ', underlined: false },
+      { str: county, underlined: true },
+      { str: ` COUNTY, ${state.toUpperCase()}`, underlined: false }
+    ];
+    const totalWidth = segments.reduce((sum, seg) => sum + font.widthOfTextAtSize(seg.str, size), 0);
+    let x = left + (pageWidth - totalWidth) / 2;
+    segments.forEach((seg) => {
+      const w = font.widthOfTextAtSize(seg.str, size);
+      text(seg.str, x, size, font);
+      if (seg.underlined) underline(x, w, y);
+      x += w;
+    });
+  })();
   y -= 22;
 
   // ---- Party caption block with bracket ----

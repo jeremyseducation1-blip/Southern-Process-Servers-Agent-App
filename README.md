@@ -366,3 +366,21 @@ is open/closed, since those were already handled correctly when the
 return was first marked. Changing the return date can move a case onto a
 different week's invoice the next time one's generated, since invoices
 are keyed off that date.
+
+## Marking an affidavit as already sent (outside the app)
+
+Search Cases has a **"Affidavit already sent (close case)"** button on any
+alias case that's still open with no affidavit recorded yet. For cases
+handled outside the app (sent manually, or sent before the PDF generator
+was fixed) -- confirms it, closes the case, no PDF generated, no email
+sent. Asks for confirmation first since it can't be un-done from the app
+itself.
+
+## Weekly Invoice week-list count: corrected again
+
+Reverted the week-button count back to counting every completed return
+shown on that week's PDF (billable + "already billed for this case"
+duplicates) -- not just the billable subset. The PDF lists everything
+that happened that week; the button's count now matches that total, not
+just the dollar-relevant subset. Billing itself is unaffected -- the
+invoice still only charges once per case number.

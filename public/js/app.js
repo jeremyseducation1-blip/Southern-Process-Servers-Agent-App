@@ -332,30 +332,15 @@
         return;
       }
 
-      // Same dedup the actual invoice PDF uses: bill once per case
-      // number, pinned to whichever defendant completed first -- so the
-      // count shown here always matches what you'll actually see when
-      // you open that week's PDF, instead of a raw per-paper count that
-      // can disagree with it.
-      const firstCompletedDateByCase = new Map();
-      returned.forEach((c) => {
-        if (!c.caseNo) return;
-        const existing = firstCompletedDateByCase.get(c.caseNo);
-        if (!existing || c.returnDate < existing) firstCompletedDateByCase.set(c.caseNo, c.returnDate);
-      });
-      const seenBilledCaseNo = new Set();
-      const billableReturned = returned
-        .slice()
-        .sort((a, b) => new Date(a.returnDate) - new Date(b.returnDate))
-        .filter((c) => {
-          const firstDate = firstCompletedDateByCase.get(c.caseNo);
-          const isFirst = firstDate === c.returnDate && !seenBilledCaseNo.has(c.caseNo);
-          if (isFirst) seenBilledCaseNo.add(c.caseNo);
-          return isFirst;
-        });
-
+      // Counts every completed return that actually appears on that
+      // week's PDF -- billable AND the "already billed for this case"
+      // duplicates -- since the PDF lists all of them, not just the
+      // billable subset. Billing itself still dedupes by case number
+      // (see buildWeekInvoicePdf.js) -- this count is "how many returns
+      // happened," not "how many dollars," so it should match the total
+      // line count on the page, not just the $ total.
       const groups = new Map(); // key: monday ISO date, value: { label, count }
-      billableReturned.forEach((c) => {
+      returned.forEach((c) => {
         const monday = mondayOfWeek(c.returnDate);
         const key = monday.toISOString().slice(0, 10);
         if (!groups.has(key)) {
@@ -369,7 +354,7 @@
       const html = sortedKeys
         .map((key) => {
           const group = groups.get(key);
-          const caseWord = group.count === 1 ? 'billable case' : 'billable cases';
+          const caseWord = group.count === 1 ? 'return' : 'returns';
           return (
             `<button type="button" class="week-btn" data-week="${key}">` +
             `<span class="week-btn-label">${group.label}</span>` +
@@ -589,6 +574,12 @@
         const affidavitBtn = c.isAlias
           ? `<button type="button" class="btn secondary affidavit-btn" data-id="${c.id}" style="margin-top:.4rem;">Affidavit</button>`
           : '';
+        // For a case whose affidavit already went out some other way
+        // (sent manually, or sent before the PDF generator was fixed) --
+        // acknowledges that and closes the case, no PDF/email generated.
+        const markAffidavitSentBtn = c.isAlias && c.status !== 'closed' && !c.affidavitSent
+          ? `<button type="button" class="btn secondary mark-affidavit-sent-btn" data-id="${c.id}" style="margin-top:.4rem;">Affidavit already sent (close case)</button>`
+          : '';
         // Red for open, green for anything returned/closed -- regardless
         // of the specific outcome (served, not found, requested per
         // plaintiff all read the same at a glance: it's done).
@@ -615,7 +606,7 @@
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${editBtn}</div>` +
+          `<div>${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
@@ -623,6 +614,39 @@
         );
       })
       .join('');
+
+    caseSearchResults.querySelectorAll('.mark-affidavit-sent-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const c = cases.find((x) => x.id === id);
+        if (!c) return;
+
+        const sure = confirm(
+          `Confirm the affidavit for ${c.caseNo} (${c.defendant}) has already been sent to Kevin, ` +
+          `handled outside this app.\n\nThis closes the case out -- no PDF gets generated, no email gets sent. ` +
+          `Continue?`
+        );
+        if (!sure) return;
+
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Updating…';
+        try {
+          const res = await fetch('/.netlify/functions/mark-affidavit-sent', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          allCasesCache = null;
+          caseSearchInput.dispatchEvent(new Event('input'));
+        } catch (err) {
+          alert('Failed to update — try again. (' + err.message + ')');
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      });
+    });
 
     caseSearchResults.querySelectorAll('.edit-return-btn').forEach((btn) => {
       btn.addEventListener('click', () => {

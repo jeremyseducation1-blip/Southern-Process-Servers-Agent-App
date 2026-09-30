@@ -258,20 +258,26 @@ Both are searchable in Search Cases along with everything else.
 
 ## Billing ($60 flat rate, once per CASE NUMBER, not per defendant)
 
-The Weekly Invoice bills by case number, not by paper. If a case has 2 or 3
-defendants and each gets served separately -- even across different weeks --
-that's still one $60 charge, pinned to whichever defendant was served
-*first*. Every later defendant served on that same case number shows up as
-"Already billed for this case," not a second charge.
+The Weekly Invoice bills by case number, not by paper. **Everything
+completed counts as billable** -- Served, Return Not Found, and Return
+Requested per Plaintiff are all treated the same for billing (per Kevin:
+he pays for completed work, not just successful service). Each billable
+line shows the outcome next to it when it isn't a plain "Served," so it's
+clear why it's on the invoice.
 
-Layout matches how Kevin wants it: billable cases first (style, case
-number, attorney's **last name**, $60 each), a running total, then
-everything not billable (Return Not Found, Return Requested per Plaintiff,
-or an already-billed additional defendant) listed underneath for the
-record, clearly separated from the actual invoice total.
+If a case has 2 or 3 defendants and each gets completed separately -- even
+across different weeks, even with different outcomes -- that's still one
+$60 charge, pinned to whichever defendant's paper was completed *first*.
+Every later defendant on that same case number shows up as "Already
+billed for this case," not a second charge -- that's the only thing that's
+ever NOT billable now.
+
+Layout: billable cases first (style, case number, attorney's **last
+name**, outcome if not Served, $60 each), a running total, then any
+already-billed duplicates listed underneath for the record.
 
 The rate is a single constant (`RATE_PER_CASE` in
-`netlify/functions/week-invoice-pdf.js`) if it ever needs to change.
+`netlify/functions/lib/buildWeekInvoicePdf.js`) if it ever needs to change.
 
 ## Collapsible sections
 
@@ -322,3 +328,17 @@ case's info already filled in and its attempts already checked -- ready to
 just pick a status and send. Declining the prompt, or a case that doesn't
 meet both conditions, changes nothing; marking returned always completes
 silently either way.
+
+## Finding a case for the affidavit, and editing logged attempts
+
+Search Cases now has an **"Affidavit"** button on any alias case -- tap it
+and the Case section fields auto-fill, the Affidavit card expands, and
+attempts get checked automatically. No more needing to retype a case
+number or defendant name to get the status dropdown ready.
+
+Every logged attempt in Search Cases now has an **"Edit"** link next to it
+-- opens the same form used to log a new attempt, but pre-filled with the
+existing date and note. Saving overwrites that attempt in place (uses the
+same attempt number) rather than creating a new one. Leaving the photo
+field blank while editing keeps whatever photo (or lack of one) was
+already on file -- it only replaces the photo if a new one is picked.

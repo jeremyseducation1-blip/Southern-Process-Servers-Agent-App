@@ -38,15 +38,20 @@ function attorneyLastName(attorney) {
 // Builds the invoice PDF for one week. Returns { pdfBuffer, billableCount,
 // total, weekLabel } so callers can both attach the PDF and log a record
 // of what went out without re-deriving the numbers separately.
+//
+// Billable = anything COMPLETED (a return outcome recorded), regardless
+// of which outcome -- Served, Return Not Found, and Return Requested per
+// Plaintiff all count the same for billing. Per Kevin: everything
+// completed that week gets billed, not just successful service.
 async function buildWeekInvoicePdf(weekKey) {
   const allCases = await listAllCases();
 
-  const firstServedDateByCase = new Map();
+  const firstCompletedDateByCase = new Map();
   allCases.forEach((c) => {
-    if ((c.returnOutcome || 'Served') !== 'Served' || !c.returnDate || !c.caseNo) return;
-    const existing = firstServedDateByCase.get(c.caseNo);
+    if (!c.returnDate || !c.caseNo) return;
+    const existing = firstCompletedDateByCase.get(c.caseNo);
     if (!existing || c.returnDate < existing) {
-      firstServedDateByCase.set(c.caseNo, c.returnDate);
+      firstCompletedDateByCase.set(c.caseNo, c.returnDate);
     }
   });
 
@@ -63,17 +68,14 @@ async function buildWeekInvoicePdf(weekKey) {
     .slice()
     .sort((a, b) => new Date(a.returnDate) - new Date(b.returnDate))
     .forEach((c) => {
-      const outcome = c.returnOutcome || 'Served';
-      if (outcome !== 'Served') {
-        notBillable.push({ c, reason: outcome });
-        return;
-      }
-      const firstDate = firstServedDateByCase.get(c.caseNo);
+      const firstDate = firstCompletedDateByCase.get(c.caseNo);
       const isFirstForCase = firstDate === c.returnDate && !seenBilledCaseNo.has(c.caseNo);
       if (isFirstForCase) {
         seenBilledCaseNo.add(c.caseNo);
         billable.push(c);
       } else {
+        // The only thing that's ever NOT billable now: a later defendant
+        // on a case number that was already billed this week or earlier.
         notBillable.push({ c, reason: 'Already billed for this case' });
       }
     });
@@ -104,7 +106,7 @@ async function buildWeekInvoicePdf(weekKey) {
     }
   }
 
-  function drawCaseLine(c, feeText, feeIsBold) {
+  function drawCaseLine(c, feeText, feeIsBold, showOutcome) {
     const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
     ensureRoom(16 + 14 + 8);
     page.drawText(style, { x: left, y, size: 12, font: bold });
@@ -112,17 +114,19 @@ async function buildWeekInvoicePdf(weekKey) {
     const feeWidth = feeFont.widthOfTextAtSize(feeText, 12);
     page.drawText(feeText, { x: right - feeWidth, y, size: 12, font: feeFont, color: feeIsBold ? rgb(0, 0, 0) : rgb(0.4, 0.4, 0.4) });
     y -= 16;
-    page.drawText(`Case No. ${c.caseNo || 'N/A'}   Attorney: ${attorneyLastName(c.attorney)}`, {
+    const outcome = c.returnOutcome || 'Served';
+    const outcomeSuffix = showOutcome && outcome !== 'Served' ? `   (${outcome})` : '';
+    page.drawText(`Case No. ${c.caseNo || 'N/A'}   Attorney: ${attorneyLastName(c.attorney)}${outcomeSuffix}`, {
       x: left + 14, y, size: 10, font, color: rgb(0.3, 0.3, 0.3)
     });
     y -= 22;
   }
 
   if (!billable.length) {
-    page.drawText('Nothing served this week.', { x: left, y, size: 11, font });
+    page.drawText('Nothing completed this week.', { x: left, y, size: 11, font });
     y -= 22;
   } else {
-    billable.forEach((c) => drawCaseLine(c, formatMoney(RATE_PER_CASE), true));
+    billable.forEach((c) => drawCaseLine(c, formatMoney(RATE_PER_CASE), true, true));
   }
 
   ensureRoom(50);

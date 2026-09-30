@@ -13,6 +13,30 @@
 (function () {
   const $ = (sel) => document.querySelector(sel);
 
+  // Populates the Case section with a case's info, expands the
+  // Affidavit card, and runs "Check attempts" for it -- the same jump
+  // used both by the mark-returned prompt and the "Affidavit" button in
+  // Search Cases. Defined early (function declarations hoist) since it's
+  // used from code defined further down the file.
+  function jumpToAffidavit(c) {
+    $('#caseNo').value = c.caseNo || '';
+    $('#plaintiff').value = c.plaintiff || '';
+    $('#defendant').value = c.defendant || '';
+    $('#extraDefendants').value = (c.defendants || [])
+      .map((d) => d.name)
+      .filter((name) => name && name !== c.defendant)
+      .join(', ');
+    $('#serviceAddress').value = c.serviceAddress || '';
+    $('#attorney').value = c.attorney || '';
+    $('#caseType').value = c.caseType || '';
+    $('#isAlias').checked = true;
+
+    const card = $('#attemptsCard');
+    card.classList.remove('collapsed');
+    card.querySelector('h2').scrollIntoView({ behavior: 'smooth' });
+    $('#checkAttemptsBtn').click();
+  }
+
   // ---------- Collapsible sections ----------
   // Every card with an <h2> becomes click-to-expand/collapse -- generic,
   // not wired per-section, so new cards get this for free. Case and
@@ -499,7 +523,10 @@
                   ? ` · photo timestamped ${new Date(a.photoTimestamp).toLocaleString('en-US')}`
                   : '';
                 const noteText = a.note ? `${a.note.replace(/</g, '&lt;')}` : '(no note)';
-                return `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}</div>`;
+                return (
+                  `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs} ` +
+                  `<a href="#" class="edit-attempt-link" data-id="${c.id}" data-n="${a.n}">Edit</a></div>`
+                );
               })
               .join('') +
             `</div>`
@@ -528,6 +555,12 @@
         const logAttemptBtn = sortedAttempts.length >= 3
           ? ''
           : `<button type="button" class="btn secondary log-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">+ Log attempt ${nextAttemptN}</button>`;
+        // Alias cases can jump straight to the Affidavit section, with
+        // the Case fields auto-filled and attempts already checked --
+        // no need to retype the case number/defendant up there manually.
+        const affidavitBtn = c.isAlias
+          ? `<button type="button" class="btn secondary affidavit-btn" data-id="${c.id}" style="margin-top:.4rem;">Affidavit</button>`
+          : '';
         // Red for open, green for anything returned/closed -- regardless
         // of the specific outcome (served, not found, requested per
         // plaintiff all read the same at a glance: it's done).
@@ -554,7 +587,7 @@
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${editBtn}</div>` +
+          `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${editBtn}</div>` +
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
           `</div>`
@@ -562,17 +595,118 @@
       })
       .join('');
 
+    caseSearchResults.querySelectorAll('.affidavit-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const c = cases.find((x) => x.id === id);
+        if (!c) return;
+        jumpToAffidavit(c);
+      });
+    });
+
+    // Builds and wires the attempt form inside a case's .attempt-log-form
+    // container -- shared by both "+ Log attempt" (existingAttempt is
+    // null, n is the next open slot) and "Edit" on an already-logged
+    // attempt (existingAttempt pre-fills the fields, n is that same
+    // attempt number so saving overwrites it rather than adding a new one).
+    function openAttemptForm(c, n, existingAttempt) {
+      const formEl = caseSearchResults.querySelector(`.attempt-log-form[data-attempt-form="${CSS.escape(c.id)}"]`);
+      if (!formEl) return;
+
+      if (!formEl.hidden) {
+        formEl.hidden = true;
+        return;
+      }
+
+      const isEdit = !!existingAttempt;
+      const existingDate = existingAttempt?.date || '';
+      const existingNote = existingAttempt?.note || '';
+
+      formEl.innerHTML = `
+        <label>Attempt ${n} date <input type="date" class="attempt-log-date" value="${existingDate}"></label>
+        <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt">${existingNote.replace(/</g, '&lt;')}</textarea></label>
+        <label class="file-drop">
+          <input type="file" class="attempt-log-photo" accept="image/*" capture="environment">
+          <span class="attempt-log-photo-label">Photo of notice (optional evidence)${isEdit ? ' — leave blank to keep the existing photo' : ''}</span>
+        </label>
+        <div class="sig-actions">
+          <button type="button" class="btn primary attempt-log-save-btn">${isEdit ? `Save changes to attempt ${n}` : `Save attempt ${n}`}</button>
+          <button type="button" class="btn secondary attempt-log-cancel-btn">Cancel</button>
+        </div>
+        <p class="status attempt-log-status"></p>
+      `;
+      formEl.hidden = false;
+
+      formEl.querySelector('.attempt-log-cancel-btn').addEventListener('click', () => {
+        formEl.hidden = true;
+      });
+
+      formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
+        const saveBtn = formEl.querySelector('.attempt-log-save-btn');
+        const statusEl = formEl.querySelector('.attempt-log-status');
+        const dateInput = formEl.querySelector('.attempt-log-date');
+        const noteInput = formEl.querySelector('.attempt-log-note');
+        const photoInput = formEl.querySelector('.attempt-log-photo');
+
+        if (!dateInput.value) {
+          statusEl.textContent = 'A date is required.';
+          statusEl.className = 'status err';
+          return;
+        }
+        if (!noteInput.value.trim()) {
+          statusEl.textContent = 'A note is required.';
+          statusEl.className = 'status err';
+          return;
+        }
+
+        const finishSave = async (photoDataUrl) => {
+          saveBtn.disabled = true;
+          statusEl.textContent = 'Saving…';
+          statusEl.className = 'status';
+          try {
+            const res = await fetch('/.netlify/functions/save-attempt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caseInfo: { caseNo: c.caseNo, defendant: c.defendant },
+                attemptNumber: n,
+                date: dateInput.value,
+                note: noteInput.value.trim(),
+                photoDataUrl: photoDataUrl || null
+              })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            statusEl.textContent = isEdit ? `Saved — attempt ${n} updated.` : `Saved — attempt ${n} logged.`;
+            statusEl.className = 'status ok';
+            allCasesCache = null;
+            setTimeout(() => caseSearchInput.dispatchEvent(new Event('input')), 600);
+          } catch (err) {
+            statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
+            statusEl.className = 'status err';
+            saveBtn.disabled = false;
+          }
+        };
+
+        const file = photoInput.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => finishSave(reader.result);
+          reader.readAsDataURL(file);
+        } else {
+          // Editing without picking a new photo keeps whatever photo (or
+          // lack of one) was already on file -- passing null here just
+          // means "no new photo," not "erase the existing one" (the
+          // backend only overwrites photoPath when a new one is given).
+          finishSave(null);
+        }
+      });
+    }
+
     caseSearchResults.querySelectorAll('.log-attempt-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const id = btn.dataset.id;
         const c = cases.find((x) => x.id === id);
-        const formEl = caseSearchResults.querySelector(`.attempt-log-form[data-attempt-form="${CSS.escape(id)}"]`);
-        if (!formEl || !c) return;
-
-        if (!formEl.hidden) {
-          formEl.hidden = true;
-          return;
-        }
+        if (!c) return;
 
         const existingN = (c.attempts || []).map((a) => a.n);
         const n = [1, 2, 3].find((num) => !existingN.includes(num));
@@ -580,81 +714,19 @@
           alert('This case already has all 3 attempts logged.');
           return;
         }
+        openAttemptForm(c, n, null);
+      });
+    });
 
-        formEl.innerHTML = `
-          <label>Attempt ${n} date <input type="date" class="attempt-log-date"></label>
-          <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt"></textarea></label>
-          <label class="file-drop">
-            <input type="file" class="attempt-log-photo" accept="image/*" capture="environment">
-            <span class="attempt-log-photo-label">Photo of notice (optional evidence)</span>
-          </label>
-          <div class="sig-actions">
-            <button type="button" class="btn primary attempt-log-save-btn">Save attempt ${n}</button>
-            <button type="button" class="btn secondary attempt-log-cancel-btn">Cancel</button>
-          </div>
-          <p class="status attempt-log-status"></p>
-        `;
-        formEl.hidden = false;
-
-        formEl.querySelector('.attempt-log-cancel-btn').addEventListener('click', () => {
-          formEl.hidden = true;
-        });
-
-        formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
-          const saveBtn = formEl.querySelector('.attempt-log-save-btn');
-          const statusEl = formEl.querySelector('.attempt-log-status');
-          const dateInput = formEl.querySelector('.attempt-log-date');
-          const noteInput = formEl.querySelector('.attempt-log-note');
-          const photoInput = formEl.querySelector('.attempt-log-photo');
-
-          if (!dateInput.value) {
-            statusEl.textContent = 'A date is required.';
-            statusEl.className = 'status err';
-            return;
-          }
-          if (!noteInput.value.trim()) {
-            statusEl.textContent = 'A note is required.';
-            statusEl.className = 'status err';
-            return;
-          }
-
-          const finishSave = async (photoDataUrl) => {
-            saveBtn.disabled = true;
-            statusEl.textContent = 'Saving…';
-            statusEl.className = 'status';
-            try {
-              const res = await fetch('/.netlify/functions/save-attempt', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  caseInfo: { caseNo: c.caseNo, defendant: c.defendant },
-                  attemptNumber: n,
-                  date: dateInput.value,
-                  note: noteInput.value.trim(),
-                  photoDataUrl: photoDataUrl || null
-                })
-              });
-              if (!res.ok) throw new Error(await res.text());
-              statusEl.textContent = `Saved — attempt ${n} logged.`;
-              statusEl.className = 'status ok';
-              allCasesCache = null;
-              setTimeout(() => caseSearchInput.dispatchEvent(new Event('input')), 600);
-            } catch (err) {
-              statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
-              statusEl.className = 'status err';
-              saveBtn.disabled = false;
-            }
-          };
-
-          const file = photoInput.files[0];
-          if (file) {
-            const reader = new FileReader();
-            reader.onload = () => finishSave(reader.result);
-            reader.readAsDataURL(file);
-          } else {
-            finishSave(null);
-          }
-        });
+    caseSearchResults.querySelectorAll('.edit-attempt-link').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        const id = link.dataset.id;
+        const n = parseInt(link.dataset.n, 10);
+        const c = cases.find((x) => x.id === id);
+        if (!c) return;
+        const existingAttempt = (c.attempts || []).find((a) => a.n === n);
+        openAttemptForm(c, n, existingAttempt || null);
       });
     });
 
@@ -847,21 +919,7 @@
               `Open the Affidavit section now to pick a status and send it to Kevin?`
             );
             if (goNow) {
-              $('#caseNo').value = c.caseNo || '';
-              $('#plaintiff').value = c.plaintiff || '';
-              $('#defendant').value = c.defendant || '';
-              $('#extraDefendants').value = (c.defendants || [])
-                .map((d) => d.name)
-                .filter((name) => name && name !== c.defendant)
-                .join(', ');
-              $('#serviceAddress').value = c.serviceAddress || '';
-              $('#attorney').value = c.attorney || '';
-              $('#caseType').value = c.caseType || '';
-              $('#isAlias').checked = true;
-
-              attemptsCard.classList.remove('collapsed');
-              attemptsCard.querySelector('h2').scrollIntoView({ behavior: 'smooth' });
-              checkAttemptsBtn.click();
+              jumpToAffidavit(c);
               return; // skip the re-search refresh below -- we're navigating away from this result
             }
           }

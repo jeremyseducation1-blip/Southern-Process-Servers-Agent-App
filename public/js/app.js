@@ -332,8 +332,30 @@
         return;
       }
 
-      const groups = new Map(); // key: monday ISO date, value: { label, count }
+      // Same dedup the actual invoice PDF uses: bill once per case
+      // number, pinned to whichever defendant completed first -- so the
+      // count shown here always matches what you'll actually see when
+      // you open that week's PDF, instead of a raw per-paper count that
+      // can disagree with it.
+      const firstCompletedDateByCase = new Map();
       returned.forEach((c) => {
+        if (!c.caseNo) return;
+        const existing = firstCompletedDateByCase.get(c.caseNo);
+        if (!existing || c.returnDate < existing) firstCompletedDateByCase.set(c.caseNo, c.returnDate);
+      });
+      const seenBilledCaseNo = new Set();
+      const billableReturned = returned
+        .slice()
+        .sort((a, b) => new Date(a.returnDate) - new Date(b.returnDate))
+        .filter((c) => {
+          const firstDate = firstCompletedDateByCase.get(c.caseNo);
+          const isFirst = firstDate === c.returnDate && !seenBilledCaseNo.has(c.caseNo);
+          if (isFirst) seenBilledCaseNo.add(c.caseNo);
+          return isFirst;
+        });
+
+      const groups = new Map(); // key: monday ISO date, value: { label, count }
+      billableReturned.forEach((c) => {
         const monday = mondayOfWeek(c.returnDate);
         const key = monday.toISOString().slice(0, 10);
         if (!groups.has(key)) {
@@ -347,7 +369,7 @@
       const html = sortedKeys
         .map((key) => {
           const group = groups.get(key);
-          const caseWord = group.count === 1 ? 'return' : 'returns';
+          const caseWord = group.count === 1 ? 'billable case' : 'billable cases';
           return (
             `<button type="button" class="week-btn" data-week="${key}">` +
             `<span class="week-btn-label">${group.label}</span>` +
@@ -498,6 +520,12 @@
         const viewReturnBtn = c.returnPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="return" style="margin-top:.4rem;">View return PDF</button>`
           : '';
+        // Fix a mistake on an already-marked return -- wrong date, wrong
+        // outcome, a note that needs updating -- without re-touching
+        // defendant-served status or reopening/reclosing the case.
+        const editReturnBtn = c.returnSent
+          ? `<button type="button" class="btn secondary edit-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit return</button>`
+          : '';
         const viewAffidavitBtn = c.affidavitPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="affidavit" style="margin-top:.4rem;">View affidavit PDF</button>`
           : '';
@@ -587,13 +615,91 @@
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${viewReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${editBtn}</div>` +
+          `<div>${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${editBtn}</div>` +
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
+          `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
           `</div>`
         );
       })
       .join('');
+
+    caseSearchResults.querySelectorAll('.edit-return-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const c = cases.find((x) => x.id === id);
+        const formEl = caseSearchResults.querySelector(`.edit-return-form[data-edit-return-form="${CSS.escape(id)}"]`);
+        if (!formEl || !c) return;
+
+        if (!formEl.hidden) {
+          formEl.hidden = true;
+          return;
+        }
+
+        const outcome = c.returnOutcome || 'Served';
+        const notes = (c.returnNotes || '').replace(/</g, '&lt;');
+        formEl.innerHTML = `
+          <label>Return date <input type="date" class="edit-return-date" value="${c.returnDate || ''}"></label>
+          <label>Return outcome
+            <select class="edit-return-outcome">
+              <option value="Served" ${outcome === 'Served' ? 'selected' : ''}>Served</option>
+              <option value="Return Not Found" ${outcome === 'Return Not Found' ? 'selected' : ''}>Return Not Found</option>
+              <option value="Return Requested per Plaintiff" ${outcome === 'Return Requested per Plaintiff' ? 'selected' : ''}>Return Requested per Plaintiff</option>
+            </select>
+          </label>
+          <label>Return notes <textarea class="edit-return-notes" rows="2">${notes}</textarea></label>
+          <div class="sig-actions">
+            <button type="button" class="btn primary edit-return-save-btn">Save changes</button>
+            <button type="button" class="btn secondary edit-return-cancel-btn">Cancel</button>
+          </div>
+          <p class="status edit-return-status"></p>
+        `;
+        formEl.hidden = false;
+
+        formEl.querySelector('.edit-return-cancel-btn').addEventListener('click', () => {
+          formEl.hidden = true;
+        });
+
+        formEl.querySelector('.edit-return-save-btn').addEventListener('click', async () => {
+          const saveBtn = formEl.querySelector('.edit-return-save-btn');
+          const statusEl = formEl.querySelector('.edit-return-status');
+          const dateInput = formEl.querySelector('.edit-return-date');
+          const outcomeSelect = formEl.querySelector('.edit-return-outcome');
+          const notesInput = formEl.querySelector('.edit-return-notes');
+
+          if (!dateInput.value) {
+            statusEl.textContent = 'A return date is required.';
+            statusEl.className = 'status err';
+            return;
+          }
+
+          saveBtn.disabled = true;
+          statusEl.textContent = 'Saving…';
+          statusEl.className = 'status';
+          try {
+            const res = await fetch('/.netlify/functions/edit-return', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: c.id,
+                returnDate: dateInput.value,
+                returnOutcome: outcomeSelect.value,
+                returnNotes: notesInput.value.trim()
+              })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            statusEl.textContent = 'Saved.';
+            statusEl.className = 'status ok';
+            allCasesCache = null;
+            setTimeout(() => caseSearchInput.dispatchEvent(new Event('input')), 600);
+          } catch (err) {
+            statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
+            statusEl.className = 'status err';
+            saveBtn.disabled = false;
+          }
+        });
+      });
+    });
 
     caseSearchResults.querySelectorAll('.affidavit-btn').forEach((btn) => {
       btn.addEventListener('click', () => {

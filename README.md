@@ -342,3 +342,27 @@ existing date and note. Saving overwrites that attempt in place (uses the
 same attempt number) rather than creating a new one. Leaving the photo
 field blank while editing keeps whatever photo (or lack of one) was
 already on file -- it only replaces the photo if a new one is picked.
+
+## Weekly Invoice week-list count now matches the actual PDF
+
+The number shown on each week button ("N billable cases") used to just
+count raw returned papers, which could disagree with the actual invoice
+PDF's total (that one dedupes multiple defendants on the same case
+number down to one billable charge). Now both use the identical
+dedup-by-case-number logic, so the number on the button always matches
+what you'll see when you open that week's PDF. If you complete more
+returns after loading the week list, tap "Load weeks" again to refresh
+the count -- it's a snapshot from whenever you last loaded it, same as
+the PDF itself always reflects live data at the moment you open it.
+
+## Editing a return
+
+Search Cases now has an **"Edit return"** button on any case with a
+return already on file. Opens an inline form (date, outcome, notes)
+pre-filled with what's currently recorded -- fix a wrong date, change the
+outcome, update the notes. This only corrects the return record itself;
+it never touches which defendants are marked served or whether the case
+is open/closed, since those were already handled correctly when the
+return was first marked. Changing the return date can move a case onto a
+different week's invoice the next time one's generated, since invoices
+are keyed off that date.

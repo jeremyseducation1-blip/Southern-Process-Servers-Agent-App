@@ -20,6 +20,8 @@
   // used from code defined further down the file.
   function jumpToAffidavit(c) {
     $('#caseNo').value = c.caseNo || '';
+    $('#courtType').value = c.courtType || '';
+    $('#county').value = c.county || '';
     $('#plaintiff').value = c.plaintiff || '';
     $('#defendant').value = c.defendant || '';
     $('#extraDefendants').value = (c.defendants || [])
@@ -1421,16 +1423,18 @@
       const attempts = (caseRecord.attempts || []).slice().sort((a, b) => a.n - b.n);
 
       const today = todayStr();
+      const validLoggedAttempts = attempts.filter((a) => a.date && a.note && a.date <= today);
       const validAttempts = [1, 2, 3].every((n) => {
         const a = attempts.find((x) => x.n === n);
         return a && a.date && a.note && a.date <= today;
       });
       const futureDateFound = attempts.some((a) => a.date && a.date > today);
+      const overrideChecked = $('#fewerAttemptsOverride').checked;
 
-      checkedCaseAttempts = attempts;
       invalidatePreview();
 
       if (futureDateFound) {
+        checkedCaseAttempts = [];
         statusSelect.disabled = true;
         statusSelect.value = '';
         attemptsCheckStatus.textContent = 'One of the logged attempt dates is in the future — fix it in Search Cases (Edit) before a status can be selected.';
@@ -1438,16 +1442,28 @@
         sigBlock.hidden = true;
         previewAffidavitBtn.disabled = true;
       } else if (validAttempts) {
+        checkedCaseAttempts = attempts;
         statusSelect.disabled = false;
         attemptsCheckStatus.textContent = `All 3 attempts found for ${caseNo}. Pick a status below.`;
         attemptsCheckStatus.className = 'status ok';
+      } else if (overrideChecked && validLoggedAttempts.length >= 1) {
+        // Override: Jeremy already has enough information to know
+        // service won't happen, so he's proceeding without all 3 --
+        // uses whatever valid attempts ARE logged, not a full set of 3.
+        checkedCaseAttempts = validLoggedAttempts;
+        statusSelect.disabled = false;
+        attemptsCheckStatus.textContent = `Proceeding with ${validLoggedAttempts.length} of 3 attempts for ${caseNo} (override checked). Pick a status below.`;
+        attemptsCheckStatus.className = 'status ok';
       } else {
+        checkedCaseAttempts = [];
         const loggedCount = [1, 2, 3].filter((n) => attempts.find((x) => x.n === n && x.date && x.note)).length;
         statusSelect.disabled = true;
         statusSelect.value = '';
         sigBlock.hidden = true;
         previewAffidavitBtn.disabled = true;
-        attemptsCheckStatus.textContent = `${loggedCount} of 3 attempts logged for ${caseNo} so far — log the rest from Search Cases, then check again.`;
+        attemptsCheckStatus.textContent = overrideChecked
+          ? `No valid attempts logged yet for ${caseNo} — at least one is needed even with the override.`
+          : `${loggedCount} of 3 attempts logged for ${caseNo} so far — log the rest from Search Cases, check the override above, or check again once done.`;
         attemptsCheckStatus.className = 'status warn';
       }
     } catch (err) {
@@ -1529,7 +1545,8 @@
           attempts,
           status: statusSelect.value,
           signatureDataUrl: state.signature.dataUrl,
-          serverInfo
+          serverInfo,
+          fewerAttemptsOverride: $('#fewerAttemptsOverride').checked
         })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -1580,6 +1597,7 @@
       status: statusSelect.value,
       signatureDataUrl: state.signature.dataUrl,
       serverInfo,
+      fewerAttemptsOverride: $('#fewerAttemptsOverride').checked,
       // Bundle the return PDF automatically if one's already on hand.
       // Per the spec: both go out together in one email, no waiting.
       returnPdfBase64: returnPdfBase64 || null,

@@ -8,9 +8,21 @@ const KEVIN_EMAIL = process.env.KEVIN_EMAIL || 'kevin@example.com';
 // Server-side re-check of the trigger conditions. The client already
 // gates the UI on these, but a function that can be hit directly
 // shouldn't trust the client alone.
-function validate({ attempts, status, signatureDataUrl }) {
-  if (!Array.isArray(attempts) || attempts.length !== 3) {
-    return 'All three attempts are required.';
+function validate({ attempts, status, signatureDataUrl, fewerAttemptsOverride }) {
+  if (!Array.isArray(attempts)) {
+    return 'Attempts data is missing.';
+  }
+  // Normally all 3 are required (that is what makes an Affidavit of
+  // Non-Service valid). Jeremy can override this when he already has
+  // enough information to know service won'''t happen -- e.g. he learns
+  // immediately the address is invalid -- rather than forcing 3 separate
+  // logged attempts first. Whatever attempts DO exist still have to be
+  // valid; the override only relaxes the count, not the data quality.
+  if (!fewerAttemptsOverride && attempts.length !== 3) {
+    return 'All three attempts are required (or check the override if you already have enough information to proceed with fewer).';
+  }
+  if (fewerAttemptsOverride && attempts.length === 0) {
+    return 'At least one attempt is required, even with the override.';
   }
   const today = new Date().toISOString().slice(0, 10);
   for (const a of attempts) {
@@ -36,11 +48,12 @@ exports.handler = async (event) => {
       serverInfo,
       returnPdfBase64,
       returnDate,
-      servedDefendants
+      servedDefendants,
+      fewerAttemptsOverride
     } = JSON.parse(event.body);
     const effectiveReturnDate = returnDate || new Date().toISOString().slice(0, 10);
 
-    const validationError = validate({ attempts, status, signatureDataUrl });
+    const validationError = validate({ attempts, status, signatureDataUrl, fewerAttemptsOverride });
     if (validationError) {
       return { statusCode: 400, body: validationError };
     }

@@ -384,3 +384,24 @@ duplicates) -- not just the billable subset. The PDF lists everything
 that happened that week; the button's count now matches that total, not
 just the dollar-relevant subset. Billing itself is unaffected -- the
 invoice still only charges once per case number.
+
+## Sending an affidavit with fewer than 3 attempts
+
+Normally all 3 attempts are required before the status dropdown unlocks
+(that's what makes an Affidavit of Non-Service valid). There's now an
+override checkbox in the Affidavit card -- "I already have enough
+information to know service won't happen" -- for cases where Jeremy
+learns early (e.g. the address is invalid) and doesn't need to burn 3
+separate attempts first. Checking it unlocks the status dropdown with
+whatever valid attempts are already logged (at least 1 required, even
+with the override) instead of requiring all 3. The affidavit PDF handles
+any number of attempts fine -- it only narrates whatever's actually there.
+
+## Bug fix: court type / county blank when jumping to Affidavit from Search Cases
+
+The "Affidavit" quick-jump button (and the mark-returned confirmation
+prompt, which uses the same underlying function) was filling in case
+number, plaintiff, defendant, address, and attorney, but NOT court type or
+county -- leaving "IN THE ___ COURT OF ___ COUNTY, TENNESSEE" blank on the
+generated affidavit even though that data was right there on the case
+record. Fixed: both now get pulled across correctly.

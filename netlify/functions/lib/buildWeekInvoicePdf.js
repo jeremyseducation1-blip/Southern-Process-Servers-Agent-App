@@ -10,7 +10,11 @@ const RATE_PER_CASE = 60;
 
 // Same Monday-of-week grouping used elsewhere in the app.
 function mondayOfWeek(dateStr) {
-  const d = new Date(dateStr);
+  // Parse YYYY-MM-DD as LOCAL calendar date parts (not a UTC timestamp --
+  // see the matching comment in public/js/app.js) so this always buckets
+  // the same way the browser does, regardless of server timezone.
+  const [y, m, day0] = dateStr.split('-').map(Number);
+  const d = new Date(y, m - 1, day0);
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
   const monday = new Date(d);

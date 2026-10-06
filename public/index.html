@@ -82,9 +82,9 @@
       <div id="caseSearchResults"></div>
     </section>
 
-    <!-- Logs -- Jeremy's own record-keeping views. Weekly (by week
-         received) and Monthly (still-open cases by month) live together
-         here as one card instead of two separate sections. -->
+    <!-- Logs -- Jeremy's own record-keeping view: every case grouped by
+         the week it was received. (Monthly Open-Case Report was removed
+         -- redundant alongside the weekly log.) -->
     <section class="card">
       <h2>Logs</h2>
 
@@ -92,32 +92,17 @@
       <p class="hint">Every case you've logged, grouped by the week it was received.</p>
       <button type="button" class="btn secondary" id="loadLogBtn">Load log</button>
       <div id="weeklyLog"></div>
-
-      <h3>Monthly Open-Case Report</h3>
-      <p class="hint">Tap a month to open a fresh PDF listing every case still open from that month.</p>
-      <button type="button" class="btn secondary" id="loadMonthReportBtn">Load months</button>
-      <div id="monthReportList"></div>
     </section>
 
     <!-- Weekly invoice -- clickable weeks, keyed by RETURN date (not
          intake date), each opening a PDF of what was actually
-         returned/served that week. -->
+         returned/served that week. (My Invoices was removed -- redundant
+         alongside this; this is the one list now.) -->
     <section class="card">
       <h2>Weekly Invoice</h2>
       <p class="hint">Tap a week to open a PDF of everything actually returned/served that week (regardless of when it was originally received).</p>
       <button type="button" class="btn secondary" id="loadWeekInvoiceBtn">Load weeks</button>
       <div id="weekInvoiceList"></div>
-    </section>
-
-    <!-- My Invoices -- the actual logged history of every invoice
-         that's gone out (on demand or the automatic Friday email),
-         with totals. This is the persistent record, not just a
-         PDF you can regenerate. -->
-    <section class="card">
-      <h2>My Invoices</h2>
-      <p class="hint">Every invoice that's actually been generated -- on demand or the automatic Friday 2pm send to Kevin -- with its total. Kevin sees this same list on his link.</p>
-      <button type="button" class="btn secondary" id="loadInvoicesBtn">Load invoices</button>
-      <div id="invoicesList"></div>
     </section>
 
     <!-- On-demand inventory PDF -- same content as the automatic Sunday

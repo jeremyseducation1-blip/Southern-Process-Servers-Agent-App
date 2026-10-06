@@ -121,7 +121,15 @@
   // Returns the Monday of the week a given date falls in, formatted like
   // "Week of September 7". Papers come in Mondays, so weeks are Mon-Sun.
   function mondayOfWeek(dateStr) {
-    const d = new Date(dateStr);
+    // Parse the YYYY-MM-DD string as LOCAL calendar date parts, not as a
+    // UTC timestamp. `new Date("2026-10-05")` is parsed by JS as UTC
+    // midnight, which in a US timezone (e.g. Central) is still the
+    // *previous* evening locally -- so getDay()/getDate() (which are
+    // local-time methods) would report the wrong weekday and silently
+    // bucket a Monday return into the week before it. Building the Date
+    // from explicit y/m/d avoids that UTC/local mismatch entirely.
+    const [y, m, day0] = dateStr.split('-').map(Number);
+    const d = new Date(y, m - 1, day0);
     const day = d.getDay(); // 0 = Sunday, 1 = Monday, ...
     const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
     const monday = new Date(d);
@@ -208,90 +216,6 @@
       window.open(url, '_blank');
     } catch (err) {
       alert('Failed to open week log — try again. (' + err.message + ')');
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = original;
-    }
-  }
-
-  // ---------- Monthly open-case report ----------
-  const loadMonthReportBtn = $('#loadMonthReportBtn');
-  const monthReportList = $('#monthReportList');
-
-  function formatMonthLabel(monthKey) {
-    const [year, month] = monthKey.split('-').map(Number);
-    const d = new Date(year, month - 1, 1);
-    return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  }
-
-  loadMonthReportBtn.addEventListener('click', async () => {
-    loadMonthReportBtn.disabled = true;
-    monthReportList.innerHTML = '<p class="hint">Loading…</p>';
-    try {
-      const res = await fetch('/.netlify/functions/list-cases');
-      if (!res.ok) throw new Error(await res.text());
-      const { cases } = await res.json();
-      const openCases = (cases || []).filter((c) => c.status !== 'closed');
-
-      if (!openCases.length) {
-        monthReportList.innerHTML = '<p class="hint">Nothing open right now.</p>';
-        return;
-      }
-
-      // Group by intake month, most recent first.
-      const groups = new Map(); // key: YYYY-MM, value: { label, count }
-      openCases.forEach((c) => {
-        if (!c.intakeDate) return;
-        const key = c.intakeDate.slice(0, 7);
-        if (!groups.has(key)) {
-          groups.set(key, { label: formatMonthLabel(key), count: 0 });
-        }
-        groups.get(key).count += 1;
-      });
-
-      const sortedKeys = Array.from(groups.keys()).sort((a, b) => (a < b ? 1 : -1));
-
-      const html = sortedKeys
-        .map((key) => {
-          const group = groups.get(key);
-          const caseWord = group.count === 1 ? 'case' : 'cases';
-          return (
-            `<button type="button" class="week-btn" data-month="${key}">` +
-            `<span class="week-btn-label">${group.label}</span>` +
-            `<span class="week-btn-count">${group.count} still open ${caseWord} &rsaquo;</span>` +
-            `</button>`
-          );
-        })
-        .join('');
-
-      monthReportList.innerHTML = html;
-
-      monthReportList.querySelectorAll('.week-btn').forEach((btn) => {
-        btn.addEventListener('click', () => openMonthPdf(btn.dataset.month, btn));
-      });
-    } catch (err) {
-      monthReportList.innerHTML = `<p class="status err">Failed to load report. (${err.message})</p>`;
-    } finally {
-      loadMonthReportBtn.disabled = false;
-    }
-  });
-
-  async function openMonthPdf(monthKey, btn) {
-    const original = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<span class="week-btn-label">Opening…</span>';
-    try {
-      const res = await fetch(`/.netlify/functions/month-report-pdf?month=${monthKey}`);
-      if (!res.ok) throw new Error(await res.text());
-      const { pdfBase64 } = await res.json();
-      const byteChars = atob(pdfBase64);
-      const byteNumbers = new Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([new Uint8Array(byteNumbers)], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-    } catch (err) {
-      alert('Failed to open monthly report — try again. (' + err.message + ')');
     } finally {
       btn.disabled = false;
       btn.innerHTML = original;
@@ -394,64 +318,6 @@
       btn.innerHTML = original;
     }
   }
-
-  // ---------- My Invoices -- persisted history of every generated invoice ----------
-  const loadInvoicesBtn = $('#loadInvoicesBtn');
-  const invoicesList = $('#invoicesList');
-
-  loadInvoicesBtn.addEventListener('click', async () => {
-    loadInvoicesBtn.disabled = true;
-    invoicesList.innerHTML = '<p class="hint">Loading…</p>';
-    try {
-      const res = await fetch('/.netlify/functions/list-invoices');
-      if (!res.ok) throw new Error(await res.text());
-      const { invoices } = await res.json();
-
-      if (!invoices.length) {
-        invoicesList.innerHTML = '<p class="hint">No invoices generated yet.</p>';
-        return;
-      }
-
-      invoicesList.innerHTML = invoices
-        .map((inv) => {
-          const generated = inv.generated_at ? new Date(inv.generated_at).toLocaleString('en-US') : '';
-          const total = Number(inv.total || 0).toFixed(2);
-          return (
-            `<div class="case-row">` +
-            `<div class="case-style">${inv.week_label || inv.week_key}</div>` +
-            `<div class="case-meta">${inv.billable_count} case${inv.billable_count === 1 ? '' : 's'} — $${total} total</div>` +
-            `<div class="case-meta">Generated ${generated}</div>` +
-            `<button type="button" class="btn secondary view-invoice-btn" data-week="${inv.week_key}" style="margin-top:.4rem;">View PDF</button>` +
-            `</div>`
-          );
-        })
-        .join('');
-
-      invoicesList.querySelectorAll('.view-invoice-btn').forEach((btn) => {
-        btn.addEventListener('click', async () => {
-          const weekKey = btn.dataset.week;
-          const original = btn.textContent;
-          btn.disabled = true;
-          btn.textContent = 'Opening…';
-          try {
-            const res = await fetch(`/.netlify/functions/get-invoice-pdf?week=${weekKey}`);
-            if (!res.ok) throw new Error(await res.text());
-            const { url } = await res.json();
-            window.open(url, '_blank');
-          } catch (err) {
-            alert('Failed to open invoice — try again. (' + err.message + ')');
-          } finally {
-            btn.disabled = false;
-            btn.textContent = original;
-          }
-        });
-      });
-    } catch (err) {
-      invoicesList.innerHTML = `<p class="status err">Failed to load invoices. (${err.message})</p>`;
-    } finally {
-      loadInvoicesBtn.disabled = false;
-    }
-  });
 
   // ---------- On-demand inventory PDF ----------
   const generateInventoryBtn = $('#generateInventoryBtn');

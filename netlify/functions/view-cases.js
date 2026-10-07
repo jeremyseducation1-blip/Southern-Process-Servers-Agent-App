@@ -11,6 +11,8 @@ function client() {
 // anything internal (signature data, raw photos, etc.).
 function publicView(c) {
   return {
+    id: c.id,
+    hasReturnPdf: !!c.returnPdfPath,
     caseNo: c.caseNo,
     caseType: c.caseType,
     plaintiff: c.plaintiff,

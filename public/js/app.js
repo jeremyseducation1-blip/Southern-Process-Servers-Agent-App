@@ -368,7 +368,8 @@
         const intake = c.intakeDate ? new Date(c.intakeDate).toLocaleDateString('en-US') : '';
         const markBtn =
           c.status !== 'closed'
-            ? `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}" style="margin-top:.4rem;">Mark returned (no email — already handled outside the app)</button>`
+            ? `<button type="button" class="btn primary send-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Upload return &amp; send to Kevin</button>` +
+              `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}" style="margin-top:.4rem;">Mark returned (no email — already handled outside the app)</button>`
             : '';
         const viewReturnBtn = c.returnPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="return" style="margin-top:.4rem;">View return PDF</button>`
@@ -868,11 +869,102 @@
       });
     });
 
+    // Upload the Genius Scan PDF -> emails it to Kevin -> marks returned,
+    // all in one step. The server emails FIRST; if that fails nothing is
+    // marked, so "returned" always means Kevin has it.
+    caseSearchResults.querySelectorAll('.send-return-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const id = btn.dataset.id;
+        const c = cases.find((x) => x.id === id);
+        const picker = document.createElement('input');
+        picker.type = 'file';
+        picker.accept = 'application/pdf';
+        picker.addEventListener('change', () => {
+          const file = picker.files[0];
+          if (!file) return;
+          if (file.size > 4 * 1024 * 1024) {
+            alert('That PDF is over 4 MB, which is too big to send from the app. Re-export it smaller from Genius Scan (lower quality / fewer pages) and try again.');
+            return;
+          }
+
+          const outstanding = (c?.defendants || []).filter((d) => !d.served).map((d) => d.name);
+          let servedDefendants = null;
+          if (outstanding.length > 1) {
+            const typed = prompt(
+              `This case has multiple defendants still open:\n${outstanding.join(', ')}\n\n` +
+                `Type which one(s) this return covers (comma-separated), or leave blank for all of them.`
+            );
+            if (typed === null) return;
+            servedDefendants = typed.trim() ? typed.split(',').map((s) => s.trim()).filter(Boolean) : outstanding;
+          }
+
+          const returnDate = prompt('Return date for this case (YYYY-MM-DD)?', new Date().toISOString().slice(0, 10));
+          if (!returnDate) return;
+
+          const outcome = prompt(
+            'Return outcome? Type one of:\n1 = Served\n2 = Return Not Found\n3 = Return Requested per Plaintiff',
+            '1'
+          );
+          if (outcome === null) return;
+          const outcomeMap = { '1': 'Served', '2': 'Return Not Found', '3': 'Return Requested per Plaintiff' };
+          const returnOutcome = outcomeMap[outcome.trim()] || 'Served';
+
+          if (!confirm(`Send ${file.name} to Kevin now for ${c?.caseNo || 'this case'} and mark it returned?`)) return;
+
+          const original = btn.innerHTML;
+          btn.disabled = true;
+          btn.textContent = 'Sending to Kevin…';
+          const reader = new FileReader();
+          reader.onload = async () => {
+            try {
+              const match = /^data:application\/pdf;base64,(.+)$/.exec(reader.result);
+              if (!match) throw new Error('That file does not look like a PDF.');
+              const res = await fetch('/.netlify/functions/send-return', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, returnPdfBase64: match[1], returnDate, servedDefendants, returnOutcome })
+              });
+              if (!res.ok) {
+                const msg = await res.text();
+                if (msg.startsWith('EMAIL_FAILED')) {
+                  alert('EMAIL DID NOT SEND — Kevin does NOT have this return, and the case was NOT marked returned.\n\n' + msg.replace('EMAIL_FAILED: ', ''));
+                } else {
+                  alert('Failed — try again. (' + msg + ')');
+                }
+                btn.disabled = false;
+                btn.innerHTML = original;
+                return;
+              }
+              allCasesCache = null;
+              alert('Sent to Kevin and marked returned.');
+              caseSearchInput.dispatchEvent(new Event('input'));
+            } catch (err) {
+              alert('Failed — try again. (' + err.message + ')');
+              btn.disabled = false;
+              btn.innerHTML = original;
+            }
+          };
+          reader.readAsDataURL(file);
+        });
+        picker.click();
+      });
+    });
+
     caseSearchResults.querySelectorAll('.mark-returned-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
         const c = cases.find((x) => x.id === id);
         const outstanding = (c?.defendants || []).filter((d) => !d.served).map((d) => d.name);
+
+        // A return isn't actually complete until the scanned return has
+        // been emailed to Kevin, so make that an explicit checkpoint
+        // BEFORE anything gets marked. Cancel = nothing happens.
+        const emailed = confirm(
+          `STOP -- before marking ${c?.caseNo || 'this case'} as returned:\n\n` +
+            `Did you already scan the return and email it to Kevin?\n\n` +
+            `OK = yes, I sent it to Kevin\nCancel = not yet (go send it first)`
+        );
+        if (!emailed) return;
 
         let servedDefendants = null;
         if (outstanding.length > 1) {

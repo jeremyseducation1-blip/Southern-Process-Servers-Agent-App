@@ -141,6 +141,7 @@
                 <div class="case-meta">${c.serviceAddress || ''}</div>
                 <div class="case-meta">Logged ${intake}</div>
                 <span class="${statusPillClass}">${statusLabel}${c.returnDate ? ' · Returned ' + c.returnDate : ''}</span>
+                ${c.hasReturnPdf ? `<button type="button" class="btn secondary view-return-btn" data-id="${String(c.id).replace(/"/g, '&quot;')}" style="margin-top:.4rem;">View return PDF</button>` : ''}
                 ${attemptHistory}
               </div>`;
           })
@@ -169,6 +170,27 @@
         subtitleEl.textContent = `${filtered.length} case${filtered.length === 1 ? '' : 's'} shown (of ${allCases.length} total).`;
         renderCases(filtered);
       }
+
+      // View a return PDF -- token-checked server-side, so a firm link
+      // can only open returns for its own attorney's cases.
+      listEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.view-return-btn');
+        if (!btn) return;
+        const original = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = 'Opening…';
+        try {
+          const res = await fetch('/.netlify/functions/view-return-pdf?token=' + encodeURIComponent(token) + '&id=' + encodeURIComponent(btn.dataset.id));
+          if (!res.ok) throw new Error(await res.text());
+          const { url } = await res.json();
+          window.open(url, '_blank');
+        } catch (err) {
+          alert('Could not open the return PDF. (' + err.message + ')');
+        } finally {
+          btn.disabled = false;
+          btn.textContent = original;
+        }
+      });
 
       searchInput.addEventListener('input', applyFilters);
       dateFilter.addEventListener('change', applyFilters);

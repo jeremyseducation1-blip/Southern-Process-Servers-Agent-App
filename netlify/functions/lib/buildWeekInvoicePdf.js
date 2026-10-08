@@ -1,5 +1,6 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { listAllCases } = require('./caseStore');
+const { billingDate } = require('./billingDate');
 
 // Flat rate, billed ONCE PER CASE NUMBER -- not per defendant. If a case
 // has 2 or 3 defendants and each gets served separately (even across
@@ -52,16 +53,18 @@ async function buildWeekInvoicePdf(weekKey) {
 
   const firstCompletedDateByCase = new Map();
   allCases.forEach((c) => {
-    if (!c.returnDate || !c.caseNo) return;
+    const bd = billingDate(c);
+    if (!bd || !c.caseNo) return;
     const existing = firstCompletedDateByCase.get(c.caseNo);
-    if (!existing || c.returnDate < existing) {
-      firstCompletedDateByCase.set(c.caseNo, c.returnDate);
+    if (!existing || bd < existing) {
+      firstCompletedDateByCase.set(c.caseNo, bd);
     }
   });
 
   const returnedThisWeek = allCases.filter((c) => {
-    if (!c.returnDate) return false;
-    return mondayOfWeek(c.returnDate).toISOString().slice(0, 10) === weekKey;
+    const bd = billingDate(c);
+    if (!bd) return false;
+    return mondayOfWeek(bd).toISOString().slice(0, 10) === weekKey;
   });
 
   const seenBilledCaseNo = new Set();
@@ -70,10 +73,10 @@ async function buildWeekInvoicePdf(weekKey) {
 
   returnedThisWeek
     .slice()
-    .sort((a, b) => new Date(a.returnDate) - new Date(b.returnDate))
+    .sort((a, b) => new Date(billingDate(a)) - new Date(billingDate(b)))
     .forEach((c) => {
       const firstDate = firstCompletedDateByCase.get(c.caseNo);
-      const isFirstForCase = firstDate === c.returnDate && !seenBilledCaseNo.has(c.caseNo);
+      const isFirstForCase = firstDate === billingDate(c) && !seenBilledCaseNo.has(c.caseNo);
       if (isFirstForCase) {
         seenBilledCaseNo.add(c.caseNo);
         billable.push(c);

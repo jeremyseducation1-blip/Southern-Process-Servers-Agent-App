@@ -314,7 +314,10 @@
       const res = await fetch('/.netlify/functions/list-cases');
       if (!res.ok) throw new Error(await res.text());
       const { cases } = await res.json();
-      const returned = (cases || []).filter((c) => c.returnDate);
+      // Invoice week follows the day it was entered in the app
+      // (completedDate), not a backdated return date.
+      const billDate = (c) => c.completedDate || c.returnDate;
+      const returned = (cases || []).filter((c) => billDate(c));
 
       if (!returned.length) {
         weekInvoiceList.innerHTML = '<p class="hint">Nothing returned yet.</p>';
@@ -330,7 +333,7 @@
       // line count on the page, not just the $ total.
       const groups = new Map(); // key: monday ISO date, value: { label, count }
       returned.forEach((c) => {
-        const monday = mondayOfWeek(c.returnDate);
+        const monday = mondayOfWeek(billDate(c));
         const key = monday.toISOString().slice(0, 10);
         if (!groups.has(key)) {
           groups.set(key, { label: formatWeekLabel(monday), count: 0 });
@@ -604,6 +607,7 @@
             </select>
           </label>
           <label>Return notes <textarea class="edit-return-notes" rows="2">${notes}</textarea></label>
+          <label class="check-row"><input type="checkbox" class="edit-return-bill"> Put this on this week's invoice (billed today). Keeps the return date above.</label>
           <div class="sig-actions">
             <button type="button" class="btn primary edit-return-save-btn">Save changes</button>
             <button type="button" class="btn secondary edit-return-cancel-btn">Cancel</button>
@@ -640,7 +644,8 @@
                 id: c.id,
                 returnDate: dateInput.value,
                 returnOutcome: outcomeSelect.value,
-                returnNotes: notesInput.value.trim()
+                returnNotes: notesInput.value.trim(),
+                billThisWeek: formEl.querySelector('.edit-return-bill').checked
               })
             });
             if (!res.ok) throw new Error(await res.text());
@@ -1025,7 +1030,7 @@
           servedDefendants = typed.trim() ? typed.split(',').map((s) => s.trim()).filter(Boolean) : outstanding;
         }
 
-        const returnDate = prompt('Return date for this case (YYYY-MM-DD)?', new Date().toISOString().slice(0, 10));
+        const returnDate = prompt('Return date for this case (YYYY-MM-DD)?', new Date().toLocaleDateString('en-CA'));
         if (!returnDate) return;
 
         const outcome = prompt(

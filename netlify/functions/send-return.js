@@ -1,6 +1,7 @@
 const { sendGmail } = require('./lib/sendGmail');
 const { getCase, putCase } = require('./lib/caseStore');
 const { uploadReturnPdf } = require('./lib/returnStorage');
+const { todayCentral } = require('./lib/billingDate');
 
 const KEVIN_EMAIL = process.env.KEVIN_EMAIL || 'kevin@example.com';
 
@@ -95,6 +96,7 @@ exports.handler = async (event) => {
 
     existing.returnSent = true;
     existing.returnDate = effectiveReturnDate;
+    existing.completedDate = todayCentral(); // day entered in the app -- what the invoice week is based on
     existing.returnPdfPath = returnPdfPath;
     existing.returnNotes = notes;
     existing.returnOutcome = outcome;

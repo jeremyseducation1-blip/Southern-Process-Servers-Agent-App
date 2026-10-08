@@ -1,4 +1,5 @@
 const { getCase, putCase } = require('./lib/caseStore');
+const { todayCentral } = require('./lib/billingDate');
 
 // Fixes a mistake on an already-marked return -- wrong date, wrong
 // outcome, a note that needs updating -- without re-touching which
@@ -11,7 +12,7 @@ exports.handler = async (event) => {
   }
 
   try {
-    const { id, returnDate, returnOutcome, returnNotes } = JSON.parse(event.body || '{}');
+    const { id, returnDate, returnOutcome, returnNotes, billThisWeek } = JSON.parse(event.body || '{}');
     if (!id) return { statusCode: 400, body: 'id is required.' };
     if (!returnDate) return { statusCode: 400, body: 'returnDate is required.' };
 
@@ -22,6 +23,9 @@ exports.handler = async (event) => {
     existing.returnDate = returnDate;
     existing.returnOutcome = returnOutcome || existing.returnOutcome || 'Served';
     existing.returnNotes = returnNotes || '';
+    // Move this return onto TODAY's invoice (without changing its return
+    // date) -- for a backlogged return that should have been billed already.
+    if (billThisWeek) existing.completedDate = todayCentral();
 
     // Keep the most recent entry in the returns[] history log in sync too,
     // so anything reading that log (rather than the top-level fields)

@@ -1,4 +1,5 @@
 const { getCase, putCase } = require('./lib/caseStore');
+const { todayCentral } = require('./lib/billingDate');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -30,6 +31,7 @@ exports.handler = async (event) => {
 
     existing.returnSent = true;
     existing.returnDate = effectiveReturnDate;
+    existing.completedDate = todayCentral(); // day entered in the app -- what the invoice week is based on
     existing.returnOutcome = returnOutcome || 'Served';
 
     const allServed =

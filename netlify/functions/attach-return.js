@@ -1,5 +1,6 @@
 const { getCase, putCase, makePaperId, getActivePaperByCaseAndDefendant } = require('./lib/caseStore');
 const { uploadReturnPdf } = require('./lib/returnStorage');
+const { todayCentral } = require('./lib/billingDate');
 
 // Attaches a return PDF to a case -- storage + case-record update only.
 // Deliberately does NOT send any email. Kevin no longer gets notified by
@@ -59,6 +60,7 @@ exports.handler = async (event) => {
 
       existing.returnSent = true; // kept for anything still reading this flag at the case level
       existing.returnDate = effectiveReturnDate;
+      existing.completedDate = todayCentral(); // day entered in the app -- what the invoice week is based on
       existing.returnPdfPath = returnPdfPath;
       existing.returnNotes = returnNotes || '';
       // Drives the status label shown everywhere -- "Served" / "Return

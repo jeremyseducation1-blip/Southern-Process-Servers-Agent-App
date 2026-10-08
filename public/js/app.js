@@ -222,6 +222,69 @@
     }
   }
 
+  // Form shown after picking the return PDF. Resolves with
+  // { returnDate, returnOutcome, returnNotes, servedDefendants } or null
+  // if cancelled. Notes are required unless the outcome is "Served".
+  function openReturnForm({ caseNo, fileName, outstanding }) {
+    return new Promise((resolve) => {
+      const esc = (t) => String(t || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+      const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local time
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;overflow:auto;padding:1rem;';
+      overlay.innerHTML =
+        `<div style="background:var(--panel,#fff);max-width:30rem;margin:0 auto;padding:1rem;border-radius:6px;">` +
+        `<h3 style="margin-top:0;">Send return to Kevin</h3>` +
+        `<p class="hint">${esc(caseNo || 'Case')} &mdash; ${esc(fileName)}</p>` +
+        (outstanding.length > 1
+          ? `<p class="hint" style="margin-bottom:.2rem;">Which defendant(s) does this return cover?</p>` +
+            outstanding.map((n, i) => `<label class="check-row"><input type="checkbox" class="rf-def" value="${esc(n)}" checked> ${esc(n)}</label>`).join('')
+          : '') +
+        `<label>Return date <input type="date" id="rfDate" value="${today}"></label>` +
+        `<label>Outcome <select id="rfOutcome">` +
+        `<option value="Served">Served</option>` +
+        `<option value="Return Not Found">Return Not Found</option>` +
+        `<option value="Return Requested per Plaintiff">Return Requested per Plaintiff</option>` +
+        `</select></label>` +
+        `<label><span id="rfNotesLabel">Notes for Kevin (optional)</span>` +
+        `<textarea id="rfNotes" rows="5" placeholder="Goes in the email to Kevin and is saved on the case."></textarea></label>` +
+        `<p class="status err" id="rfError"></p>` +
+        `<button type="button" class="btn primary" id="rfSend">Send to Kevin &amp; mark returned</button> ` +
+        `<button type="button" class="btn secondary" id="rfCancel">Cancel</button>` +
+        `</div>`;
+      document.body.appendChild(overlay);
+
+      const q = (sel) => overlay.querySelector(sel);
+      const notesLabel = q('#rfNotesLabel');
+      const syncLabel = () => {
+        notesLabel.textContent = q('#rfOutcome').value === 'Served'
+          ? 'Notes for Kevin (optional)'
+          : 'Notes for Kevin (REQUIRED — what you found / why it was not served)';
+      };
+      q('#rfOutcome').addEventListener('change', syncLabel);
+
+      const done = (val) => { overlay.remove(); resolve(val); };
+      q('#rfCancel').addEventListener('click', () => done(null));
+      q('#rfSend').addEventListener('click', () => {
+        const returnDate = q('#rfDate').value;
+        const returnOutcome = q('#rfOutcome').value;
+        const returnNotes = q('#rfNotes').value.trim();
+        const err = q('#rfError');
+        if (!returnDate) { err.textContent = 'Pick the return date.'; return; }
+        if (returnOutcome !== 'Served' && !returnNotes) {
+          err.textContent = 'Add your notes — they go in the email to Kevin.';
+          q('#rfNotes').focus();
+          return;
+        }
+        let servedDefendants = null;
+        if (outstanding.length > 1) {
+          servedDefendants = Array.from(overlay.querySelectorAll('.rf-def:checked')).map((el) => el.value);
+          if (!servedDefendants.length) { err.textContent = 'Check at least one defendant.'; return; }
+        }
+        done({ returnDate, returnOutcome, returnNotes, servedDefendants });
+      });
+    });
+  }
+
   // Shared helper: turn a base64 PDF into an actual downloaded file
   // (not just opened in a tab) -- saves to the device's Downloads/Files
   // instead of just displaying it.
@@ -879,7 +942,7 @@
         const picker = document.createElement('input');
         picker.type = 'file';
         picker.accept = 'application/pdf';
-        picker.addEventListener('change', () => {
+        picker.addEventListener('change', async () => {
           const file = picker.files[0];
           if (!file) return;
           if (file.size > 4 * 1024 * 1024) {
@@ -888,28 +951,14 @@
           }
 
           const outstanding = (c?.defendants || []).filter((d) => !d.served).map((d) => d.name);
-          let servedDefendants = null;
-          if (outstanding.length > 1) {
-            const typed = prompt(
-              `This case has multiple defendants still open:\n${outstanding.join(', ')}\n\n` +
-                `Type which one(s) this return covers (comma-separated), or leave blank for all of them.`
-            );
-            if (typed === null) return;
-            servedDefendants = typed.trim() ? typed.split(',').map((s) => s.trim()).filter(Boolean) : outstanding;
-          }
 
-          const returnDate = prompt('Return date for this case (YYYY-MM-DD)?', new Date().toISOString().slice(0, 10));
-          if (!returnDate) return;
-
-          const outcome = prompt(
-            'Return outcome? Type one of:\n1 = Served\n2 = Return Not Found\n3 = Return Requested per Plaintiff',
-            '1'
-          );
-          if (outcome === null) return;
-          const outcomeMap = { '1': 'Served', '2': 'Return Not Found', '3': 'Return Requested per Plaintiff' };
-          const returnOutcome = outcomeMap[outcome.trim()] || 'Served';
-
-          if (!confirm(`Send ${file.name} to Kevin now for ${c?.caseNo || 'this case'} and mark it returned?`)) return;
+          // One form for everything (date, outcome, which defendants, and
+          // the notes that go into Kevin's email) instead of a chain of
+          // pop-up prompts. Notes are REQUIRED for anything but "Served"
+          // -- a not-found return needs its notes on it.
+          const form = await openReturnForm({ caseNo: c?.caseNo, fileName: file.name, outstanding });
+          if (!form) return;
+          const { returnDate, returnOutcome, returnNotes, servedDefendants } = form;
 
           const original = btn.innerHTML;
           btn.disabled = true;
@@ -922,7 +971,7 @@
               const res = await fetch('/.netlify/functions/send-return', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, returnPdfBase64: match[1], returnDate, servedDefendants, returnOutcome })
+                body: JSON.stringify({ id, returnPdfBase64: match[1], returnDate, servedDefendants, returnOutcome, returnNotes })
               });
               if (!res.ok) {
                 const msg = await res.text();

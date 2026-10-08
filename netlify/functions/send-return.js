@@ -38,13 +38,24 @@ exports.handler = async (event) => {
     const effectiveReturnDate = returnDate || new Date().toISOString().slice(0, 10);
     const outcome = returnOutcome || 'Served';
     const subject = buildSubject(existing);
+    const notes = (returnNotes || '').trim();
+
+    // Anything other than a plain "Served" return (e.g. not found) has to
+    // carry the server's notes -- Kevin needs them in the email.
+    if (outcome !== 'Served' && !notes) {
+      return { statusCode: 400, body: 'Notes are required for a ' + outcome + ' return.' };
+    }
 
     // 1) Send to Kevin. Throws on failure -> caught below, nothing marked.
     try {
       await sendGmail({
         to: KEVIN_EMAIL,
         subject,
-        text: `Return attached for ${existing.caseNo || 'this case'}.\nOutcome: ${outcome}\nReturn date: ${effectiveReturnDate}${returnNotes ? '\nNotes: ' + returnNotes : ''}`,
+        text:
+          `Return attached for ${existing.caseNo || 'this case'}.\n\n` +
+          `Outcome: ${outcome}\n` +
+          `Return date: ${effectiveReturnDate}\n` +
+          (notes ? `\nNotes:\n${notes}\n` : ''),
         attachments: [
           {
             filename: `return-${(existing.caseNo || 'case').replace(/[^a-z0-9_-]/gi, '_')}.pdf`,
@@ -80,12 +91,12 @@ exports.handler = async (event) => {
       );
     }
     existing.returns = Array.isArray(existing.returns) ? existing.returns : [];
-    existing.returns.push({ defendants: coveredNames, date: effectiveReturnDate, pdfPath: returnPdfPath, outcome, notes: returnNotes || '', emailedToKevin: true });
+    existing.returns.push({ defendants: coveredNames, date: effectiveReturnDate, pdfPath: returnPdfPath, outcome, notes, emailedToKevin: true });
 
     existing.returnSent = true;
     existing.returnDate = effectiveReturnDate;
     existing.returnPdfPath = returnPdfPath;
-    existing.returnNotes = returnNotes || '';
+    existing.returnNotes = notes;
     existing.returnOutcome = outcome;
 
     const allServed =

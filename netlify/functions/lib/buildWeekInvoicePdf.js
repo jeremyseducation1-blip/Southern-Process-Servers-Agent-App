@@ -104,7 +104,27 @@ async function buildWeekInvoicePdf(weekKey) {
   let page = doc.addPage([612, 792]);
   let y = top;
   page.drawText(label, { x: left, y, size: 16, font: bold });
-  y -= 26;
+  y -= 20;
+
+  // Outcome breakdown of the billed cases (adds up to the "N cases @ $60"
+  // line; already-billed repeats are listed separately below), e.g. "7 Served   8 Return Not Found   1 Return
+  // Requested per Plaintiff". Outcomes with none this week are left out.
+  const outcomeCounts = new Map();
+  billable.forEach((c) => {
+    const o = c.returnOutcome || 'Served';
+    outcomeCounts.set(o, (outcomeCounts.get(o) || 0) + 1);
+  });
+  const outcomeOrder = ['Served', 'Return Not Found', 'Return Requested per Plaintiff'];
+  const breakdown = [
+    ...outcomeOrder.filter((o) => outcomeCounts.has(o)),
+    ...Array.from(outcomeCounts.keys()).filter((o) => !outcomeOrder.includes(o))
+  ].map((o) => `${outcomeCounts.get(o)} ${o}`).join('     ');
+  if (breakdown) {
+    page.drawText(breakdown, { x: left, y, size: 12, font: bold });
+    y -= 24;
+  } else {
+    y -= 6;
+  }
 
   function ensureRoom(height) {
     if (y - height < bottom) {
@@ -122,7 +142,7 @@ async function buildWeekInvoicePdf(weekKey) {
     page.drawText(feeText, { x: right - feeWidth, y, size: 12, font: feeFont, color: feeIsBold ? rgb(0, 0, 0) : rgb(0.4, 0.4, 0.4) });
     y -= 16;
     const outcome = c.returnOutcome || 'Served';
-    const outcomeSuffix = showOutcome && outcome !== 'Served' ? `   (${outcome})` : '';
+    const outcomeSuffix = showOutcome ? `   (${outcome})` : '';
     page.drawText(`Case No. ${c.caseNo || 'N/A'}   Attorney: ${attorneyLastName(c.attorney)}${outcomeSuffix}`, {
       x: left + 14, y, size: 10, font, color: rgb(0.3, 0.3, 0.3)
     });
@@ -154,7 +174,7 @@ async function buildWeekInvoicePdf(weekKey) {
     ensureRoom(30);
     page.drawText('Not billable (for the record only):', { x: left, y, size: 11, font: bold, color: rgb(0.4, 0.4, 0.4) });
     y -= 20;
-    notBillable.forEach(({ c, reason }) => drawCaseLine(c, reason, false));
+    notBillable.forEach(({ c, reason }) => drawCaseLine(c, reason, false, true));
   }
 
   const pdfBytes = await doc.save();

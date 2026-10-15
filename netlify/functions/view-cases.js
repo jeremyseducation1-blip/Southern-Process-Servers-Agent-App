@@ -39,6 +39,7 @@ function publicView(c) {
       date: a.date,
       note: a.note,
       hasPhoto: !!a.photoPath,
+      gpsVerifiedAt: a.visitAt || null,
       photoTimestamp: a.photoTimestamp || null
     }))
   };

@@ -66,13 +66,15 @@ exports.handler = async (event) => {
       serverInfo
     });
 
-    const attorney = caseInfo?.attorney || 'Scott Weiss';
-    const subject = `Affidavit — ${caseInfo?.caseNo || 'no case #'} — ${caseInfo?.defendant || 'unknown defendant'} — ${attorney}`;
+    // No default attorney -- if none was entered, say so instead of
+    // naming someone who isn't on the case.
+    const attorney = (caseInfo?.attorney || '').trim();
+    const subject = `Affidavit — ${caseInfo?.caseNo || 'no case #'} — ${caseInfo?.defendant || 'unknown defendant'}${attorney ? ' — ' + attorney : ''}`;
     const text =
       `Affidavit of non-service completed.\n\n` +
       `Case: ${caseInfo?.caseNo || ''}\n` +
       `Defendant: ${caseInfo?.defendant || ''}\n` +
-      `Attorney: ${attorney}\n` +
+      `Attorney: ${attorney || '(not provided)'}\n` +
       `Status: ${status}\n` +
       (returnPdfBase64
         ? `Return document is attached alongside the affidavit.\n`

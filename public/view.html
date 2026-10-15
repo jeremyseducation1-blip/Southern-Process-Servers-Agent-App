@@ -129,7 +129,10 @@
                       ? ` · photo on file${a.photoTimestamp ? ', timestamped ' + new Date(a.photoTimestamp).toLocaleString('en-US') : ''}`
                       : '';
                     const noteText = a.note ? a.note.replace(/</g, '&lt;') : '(no note)';
-                    return `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoNote}</div>`;
+                    const gpsNote = a.gpsVerifiedAt
+                      ? ` · 📍 GPS-verified ${new Date(a.gpsVerifiedAt).toLocaleString('en-US', { timeZone: 'America/Chicago' })}`
+                      : '';
+                    return `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoNote}${gpsNote}</div>`;
                   })
                   .join('') +
                 `</div>`

@@ -38,6 +38,9 @@ exports.handler = async (event) => {
     existing.attempts = Array.isArray(existing.attempts) ? existing.attempts : [];
     const idx = existing.attempts.findIndex((a) => a.n === attemptNumber);
     const entry = {
+      // Keep GPS proof (visitAt/lat/lng/accuracy) from an "I'm here" tap
+      // when an attempt's date/note/photo is later edited.
+      ...(idx >= 0 ? existing.attempts[idx] : {}),
       n: attemptNumber,
       date: date || (idx >= 0 ? existing.attempts[idx].date : null),
       note: note || (idx >= 0 ? existing.attempts[idx].note : ''),

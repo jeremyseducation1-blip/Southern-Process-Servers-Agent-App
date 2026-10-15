@@ -39,7 +39,7 @@ exports.handler = async (event) => {
       id = `${baseId}::${Date.now()}`;
     }
 
-    const attorney = caseInfo.attorney || 'Scott Weiss';
+    const attorney = (caseInfo.attorney || '').trim(); // blank stays blank -- no default attorney
     const isAlias = !!caseInfo.isAlias;
     // Affidavit workflow only ever applies to alias summons for Scott Weiss.
     // Everything else can still be tracked (and shows on inventory if open)

@@ -55,7 +55,7 @@
           <input type="text" id="serviceAddress" placeholder="3013 Delta Queen Dr, Nashville, TN 37214">
         </label>
         <label>Attorney of record
-          <input type="text" id="attorney" value="Scott Weiss">
+          <input type="text" id="attorney" placeholder="Leave blank if you don't know the attorney">
         </label>
         <label>Special notes (things Kevin or the firm told you — anything worth not forgetting)
           <textarea id="caseNotes" rows="3" placeholder="e.g. Kevin said skip weekends on this one, or firm wants photos of the mailbox too"></textarea>
@@ -80,6 +80,21 @@
       <p class="hint">Search by defendant, plaintiff, case number, or address — matches everything you've ever logged, open or closed.</p>
       <input type="text" id="caseSearchInput" placeholder="e.g. Tello, or 26GC8832, or Delta Queen Dr">
       <div id="caseSearchResults"></div>
+    </section>
+
+    <!-- Route -- today's stops. Tap cases in the order you'll drive them,
+         open the whole route in Google Maps, and tap "I'm here" at each
+         door (works with the car on or off). -->
+    <section class="card">
+      <h2>Route</h2>
+      <p class="hint">Load your open cases, tap them in the order you'll drive, then open the whole route in Google Maps. At each stop tap "I'm here" — it records the time and your location whether or not the car is turned off.</p>
+      <button type="button" class="btn secondary" id="loadRouteBtn">Load open cases</button>
+      <div id="routeActions" hidden>
+        <button type="button" class="btn primary" id="openRouteBtn">Open route in Maps</button>
+        <button type="button" class="btn secondary" id="clearRouteBtn">Clear order</button>
+        <p class="hint" id="routeCount"></p>
+      </div>
+      <div id="routeList"></div>
     </section>
 
     <!-- Logs -- Jeremy's own record-keeping view: every case grouped by

@@ -222,6 +222,186 @@
     }
   }
 
+  // ---------- "I'm here" (GPS-stamped arrival) + route ----------
+  const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+  const centralTime = (iso) =>
+    new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
+
+  function locateNow() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error('This phone/browser does not support location.'));
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        (err) => {
+          if (err.code === 1) reject(new Error('Location is blocked. Allow location for this site in your phone/browser settings, then try again.'));
+          else if (err.code === 3) reject(new Error('Could not get a location fix in time. Step outside / wait a few seconds and try again.'));
+          else reject(new Error('Could not get your location. Try again.'));
+        },
+        { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      );
+    });
+  }
+
+  // One tap: grab GPS, send it; the server stamps the time. Then offers a
+  // quick note (saved separately, so the stamp isn't delayed by typing).
+  // Returns the server result, or null if it failed/was cancelled.
+  async function recordArrival(c, btn) {
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.textContent = 'Getting location…';
+    try {
+      const pos = await locateNow();
+      btn.textContent = 'Recording…';
+      const res = await fetch('/.netlify/functions/log-arrival', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: c.id, lat: pos.lat, lng: pos.lng, accuracy: pos.accuracy })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const out = await res.json();
+      allCasesCache = null;
+
+      if (out.duplicate) {
+        alert(`Already recorded at ${centralTime(out.visit.at)} — that was the same stop.`);
+        return out;
+      }
+      const when = centralTime(out.visit.at);
+      const acc = out.visit.accuracy != null ? ` (location accurate to about ${out.visit.accuracy} m)` : '';
+      if (out.attempt) {
+        const wantNote = confirm(
+          `Recorded: attempt ${out.attempt.n} at ${when}${acc}.\n\n` +
+          `Add a quick note about this stop now? (Needed before the affidavit.)`
+        );
+        if (wantNote) {
+          const note = prompt('What happened at this stop? (e.g. Left yellow notice on door)');
+          if (note && note.trim()) {
+            const r2 = await fetch('/.netlify/functions/save-attempt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caseInfo: { caseNo: c.caseNo, defendant: c.defendant },
+                attemptNumber: out.attempt.n,
+                date: out.attempt.date,
+                note: note.trim()
+              })
+            });
+            if (!r2.ok) alert('Stop was recorded, but the note did not save — add it with Edit on the attempt.');
+          }
+        }
+      } else {
+        alert(`Recorded at ${when}${acc}. This case already has 3 attempts, so it was saved as an extra visit.`);
+      }
+      return out;
+    } catch (err) {
+      alert('Not recorded — ' + err.message);
+      return null;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = original;
+    }
+  }
+
+  // ---------- Route ----------
+  const loadRouteBtn = $('#loadRouteBtn');
+  const routeList = $('#routeList');
+  const routeActions = $('#routeActions');
+  const routeCount = $('#routeCount');
+  let routeCases = [];
+  let routeOrder = []; // case ids, in the order tapped
+
+  function renderRoute() {
+    routeList.innerHTML = routeCases
+      .map((c) => {
+        const pos = routeOrder.indexOf(c.id);
+        const n = (c.attempts || []).length;
+        const badge = pos >= 0
+          ? `<span class="status-pill status-pill-open" style="margin-right:.4rem;">Stop ${pos + 1}</span>`
+          : '';
+        return (
+          `<div class="case-row" data-route-id="${esc(c.id)}">` +
+          `<div class="case-style">${badge}${esc(c.defendant || 'Unknown Defendant')}</div>` +
+          `<div class="case-meta">${esc(c.serviceAddress)}</div>` +
+          `<div class="case-meta">Case No. ${esc(c.caseNo)} — attempts logged: ${n}/3</div>` +
+          `<button type="button" class="btn secondary route-pick-btn" style="margin-top:.4rem;">${pos >= 0 ? 'Remove from route' : 'Add to route'}</button> ` +
+          `<a class="btn secondary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" ` +
+          `href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">Navigate</a> ` +
+          `<button type="button" class="btn primary route-here-btn" style="margin-top:.4rem;">📍 I'm here</button>` +
+          `</div>`
+        );
+      })
+      .join('');
+    routeCount.textContent = routeOrder.length
+      ? `${routeOrder.length} stop${routeOrder.length === 1 ? '' : 's'} in your route.`
+      : 'Tap "Add to route" on the cases you will drive to, in order.';
+
+    routeList.querySelectorAll('.case-row').forEach((row) => {
+      const c = routeCases.find((x) => x.id === row.dataset.routeId);
+      row.querySelector('.route-pick-btn').addEventListener('click', () => {
+        const i = routeOrder.indexOf(c.id);
+        if (i >= 0) routeOrder.splice(i, 1);
+        else routeOrder.push(c.id);
+        renderRoute();
+      });
+      row.querySelector('.route-here-btn').addEventListener('click', async (e) => {
+        const out = await recordArrival(c, e.currentTarget);
+        if (out && out.attempt) {
+          c.attempts = (c.attempts || []).concat([out.attempt]);
+          renderRoute();
+        }
+      });
+    });
+  }
+
+  loadRouteBtn.addEventListener('click', async () => {
+    loadRouteBtn.disabled = true;
+    routeList.innerHTML = '<p class="hint">Loading…</p>';
+    try {
+      const res = await fetch('/.netlify/functions/list-cases');
+      if (!res.ok) throw new Error(await res.text());
+      const { cases } = await res.json();
+      routeCases = (cases || []).filter((c) => c.status !== 'closed' && c.serviceAddress);
+      routeOrder = routeOrder.filter((id) => routeCases.some((c) => c.id === id));
+      if (!routeCases.length) {
+        routeList.innerHTML = '<p class="hint">No open cases with an address.</p>';
+        routeActions.hidden = true;
+        return;
+      }
+      routeActions.hidden = false;
+      renderRoute();
+    } catch (err) {
+      routeList.innerHTML = `<p class="status err">Failed to load. (${esc(err.message)})</p>`;
+    } finally {
+      loadRouteBtn.disabled = false;
+    }
+  });
+
+  $('#clearRouteBtn').addEventListener('click', () => {
+    routeOrder = [];
+    renderRoute();
+  });
+
+  // Google Maps takes the last stop as the destination and up to 9 stops
+  // in between; the route starts from wherever you are right now.
+  $('#openRouteBtn').addEventListener('click', () => {
+    if (!routeOrder.length) {
+      alert('Add at least one case to the route first.');
+      return;
+    }
+    if (routeOrder.length > 10) {
+      alert('Google Maps only takes 10 stops at a time. Remove a few and open the rest as a second route.');
+      return;
+    }
+    const addrs = routeOrder.map((id) => routeCases.find((c) => c.id === id).serviceAddress);
+    const dest = addrs[addrs.length - 1];
+    const waypoints = addrs.slice(0, -1);
+    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(dest)}`;
+    if (waypoints.length) url += `&waypoints=${encodeURIComponent(waypoints.join('|'))}`;
+    window.open(url, '_blank');
+  });
+
   // Form shown after picking the return PDF. Resolves with
   // { returnDate, returnOutcome, returnNotes, servedDefendants } or null
   // if cancelled. Notes are required unless the outcome is "Served".
@@ -471,8 +651,13 @@
                   ? ` · photo timestamped ${new Date(a.photoTimestamp).toLocaleString('en-US')}`
                   : '';
                 const noteText = a.note ? `${a.note.replace(/</g, '&lt;')}` : '(no note)';
+                const gps = a.visitAt
+                  ? ` · 📍 GPS-verified ${new Date(a.visitAt).toLocaleString('en-US', { timeZone: 'America/Chicago' })}` +
+                    `${a.accuracy != null ? ' (±' + a.accuracy + ' m)' : ''} ` +
+                    `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">map</a>`
+                  : '';
                 return (
-                  `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs} ` +
+                  `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}${gps} ` +
                   `<a href="#" class="edit-attempt-link" data-id="${c.id}" data-n="${a.n}">Edit</a></div>`
                 );
               })
@@ -500,6 +685,9 @@
             : '';
         const editBtn = `<button type="button" class="btn secondary edit-case-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit</button>`;
         const nextAttemptN = Math.min(3, sortedAttempts.length + 1);
+        const imHereBtn = c.status !== 'closed'
+          ? `<button type="button" class="btn primary im-here-btn" data-id="${c.id}" style="margin-top:.4rem;">📍 I'm here</button>`
+          : '';
         const logAttemptBtn = sortedAttempts.length >= 3
           ? ''
           : `<button type="button" class="btn secondary log-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">+ Log attempt ${nextAttemptN}</button>`;
@@ -541,7 +729,7 @@
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
+          `<div>${imHereBtn}${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
@@ -937,6 +1125,15 @@
       });
     });
 
+    caseSearchResults.querySelectorAll('.im-here-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const c = cases.find((x) => x.id === btn.dataset.id);
+        if (!c) return;
+        const out = await recordArrival(c, btn);
+        if (out) caseSearchInput.dispatchEvent(new Event('input'));
+      });
+    });
+
     // Upload the Genius Scan PDF -> emails it to Kevin -> marks returned,
     // all in one step. The server emails FIRST; if that fails nothing is
     // marked, so "returned" always means Kevin has it.
@@ -1191,6 +1388,24 @@
   const sendIntakeBtn = $('#sendIntakeBtn');
   const intakeStatus = $('#intakeStatus');
 
+  // Attorney is blank by default now. When "Scott Weiss" is typed in, ask
+  // whether this is an alias summons (that's what turns on the affidavit
+  // tracking) instead of assuming. Asked once per typed value.
+  let aliasAskedFor = null;
+  function askAliasIfWeiss() {
+    const atty = $('#attorney').value.trim().toLowerCase();
+    if (atty !== 'scott weiss' || $('#isAlias').checked || aliasAskedFor === atty) return;
+    aliasAskedFor = atty;
+    if (confirm('Scott Weiss is the attorney.\n\nIs this an ALIAS summons?\n\nOK = yes, alias\nCancel = no, regular summons')) {
+      $('#isAlias').checked = true;
+      $('#isAlias').dispatchEvent(new Event('change'));
+    }
+  }
+  $('#attorney').addEventListener('change', () => {
+    if ($('#attorney').value.trim().toLowerCase() !== 'scott weiss') aliasAskedFor = null;
+    askAliasIfWeiss();
+  });
+
   // Clears the case-info fields after a successful intake log so the form
   // is ready for the next paper, instead of leaving the last case's info
   // sitting there to accidentally get logged twice.
@@ -1201,7 +1416,8 @@
     $('#defendant').value = '';
     $('#extraDefendants').value = '';
     $('#serviceAddress').value = '';
-    $('#attorney').value = 'Scott Weiss';
+    $('#attorney').value = '';
+    aliasAskedFor = null;
     $('#caseNotes').value = '';
     $('#casePhoneNumbers').value = '';
     $('#isAlias').checked = false;
@@ -1215,6 +1431,7 @@
     intakeStatus.textContent = 'Logging intake…';
     intakeStatus.className = 'status';
     try {
+      askAliasIfWeiss(); // covers typing the name and tapping Log intake without leaving the field
       const caseInfo = collectCaseInfo();
       if (!caseInfo.caseNo) throw new Error('Enter a case number first.');
       const res = await fetch('/.netlify/functions/intake', {
@@ -1526,7 +1743,7 @@
       defendant: primaryDefendant,
       defendants,
       serviceAddress: $('#serviceAddress').value.trim(),
-      attorney: $('#attorney').value.trim() || 'Scott Weiss',
+      attorney: $('#attorney').value.trim(),
       notes: $('#caseNotes').value.trim(),
       phoneNumbers: $('#casePhoneNumbers').value.trim(),
       isAlias: $('#isAlias').checked

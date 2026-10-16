@@ -25,6 +25,7 @@ function publicView(c) {
     status: c.status,
     intakeDate: c.intakeDate,
     serviceAddress: c.serviceAddress,
+    courtDate: c.courtDate || null,
     returnSent: c.returnSent,
     returnDate: c.returnDate,
     returnOutcome: c.returnOutcome || null,

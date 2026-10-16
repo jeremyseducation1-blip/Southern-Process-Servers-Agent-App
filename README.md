@@ -492,3 +492,13 @@ typed value, and again at "Log intake" if the field was never left.
 - Each open case now has a single **📍 Log attempt N (I'm here)** button. One tap grabs the phone's GPS, the server stamps the time, and attempt N is created with that proof. The note form then opens for that same attempt, so there is never a second, duplicate attempt. The separate "I'm here" button on case rows is gone (the Route card's button does the same single thing).
 - If the phone can't give a location, you're asked whether to log the attempt without a GPS stamp.
 - Each attempt in the history has a **Remove** link (`remove-attempt` function). The attempt disappears from the case and the affidavit. The underlying GPS visit stays in the append-only `visits` log, flagged `removed`, so tapping again right after an accidental tap works.
+
+## Court dates, expirations, and inventory priority
+- New optional fields on every case: **Court date** and **Issued on** (the date printed on the summons/warrant). Both are on the intake form and in Edit. Changing a court date in Edit keeps a trail (`courtDateHistory`: old date, new date, when).
+- Expiration = Issued on + 60 days for General Sessions, + 90 days for everything else. If Issued on is blank, the received date is used and the expiration is marked "(est.)".
+- Priority (open cases only; rules live in `public/js/priority.js`, with an identical copy at `netlify/functions/lib/priority.js` that the server uses -- keep them the same):
+  - PAST DUE: court date or expiration already passed.
+  - HIGH: court within 7 days, or expires within 14 days.
+  - SOON: court within 14 days, or expires within 30 days.
+- The inventory PDF (on-demand and the Sunday email) now opens with a "Needs attention first" block sorted by urgency, and every case lists its court date / expiration.
+- Case rows in Search Cases show the court date and expiration with a colored flag.

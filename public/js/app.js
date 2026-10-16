@@ -693,6 +693,20 @@
                 .join('') +
               `</div>`
             : '';
+        // Court date + expiration (60 days General Sessions, 90 otherwise),
+        // colored by how close they are. Open cases only.
+        let deadlineLine = '';
+        if (c.status !== 'closed' && window.SPSPriority) {
+          const pr = window.SPSPriority.assess(c);
+          const bits = [];
+          if (pr.courtDate) bits.push(`Court ${window.SPSPriority.pretty(pr.courtDate)}`);
+          if (pr.expiresOn) bits.push(`Expires ${window.SPSPriority.pretty(pr.expiresOn)}${pr.estimated ? ' (est.)' : ''}`);
+          if (bits.length) {
+            const color = pr.level === 'past' || pr.level === 'high' ? '#b00020' : pr.level === 'soon' ? '#b45f00' : 'inherit';
+            const badge = pr.level === 'ok' ? '' : ` — <strong>${{ past: 'PAST DUE', high: 'HIGH PRIORITY', soon: 'SOON' }[pr.level]}</strong>: ${pr.reasons.map(esc).join('; ')}`;
+            deadlineLine = `<div class="case-meta" style="color:${color};">📅 ${bits.join(' · ')}${badge}</div>`;
+          }
+        }
         const editBtn = `<button type="button" class="btn secondary edit-case-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit</button>`;
         const nextAttemptN = Math.min(3, sortedAttempts.length + 1);
         const logAttemptBtn = sortedAttempts.length >= 3
@@ -730,6 +744,7 @@
           `<div class="case-meta">Case No. ${c.caseNo || 'N/A'} — ${c.attorney || ''}${c.caseType ? ' — ' + c.caseType : ''}</div>` +
           `<div class="case-meta">${c.serviceAddress || ''}</div>` +
           `<div class="case-meta">Logged ${intake}${c.returnDate ? ' · Returned ' + c.returnDate : ''}${c.closedDate ? ' · Closed ' + new Date(c.closedDate).toLocaleDateString('en-US') : ''}</div>` +
+          deadlineLine +
           `<span class="${statusPillClass}">${statusLabel}</span>` +
           missingReturnNote +
           notesBlock +
@@ -1068,6 +1083,8 @@
           <label>Plaintiff <input type="text" class="edit-plaintiff" value="${c.plaintiff || ''}"></label>
           <label>Defendant <input type="text" class="edit-defendant" value="${c.defendant || ''}"></label>
           <label>Additional defendants (comma-separated) <input type="text" class="edit-extraDefendants" value="${extraDefendants}"></label>
+          <label>Court date (change it here if the court moves it) <input type="date" class="edit-courtDate" value="${c.courtDate || ''}"></label>
+          <label>Issued on (date on the summons/warrant) <input type="date" class="edit-issueDate" value="${c.issueDate || ''}"></label>
           <label>Service address <input type="text" class="edit-serviceAddress" value="${c.serviceAddress || ''}"></label>
           <label>Attorney <input type="text" class="edit-attorney" value="${c.attorney || ''}"></label>
           <label>Special notes <textarea class="edit-notes" rows="3">${c.notes || ''}</textarea></label>
@@ -1105,6 +1122,8 @@
             defendant: primaryDefendant,
             defendants,
             serviceAddress: formEl.querySelector('.edit-serviceAddress').value.trim(),
+            courtDate: formEl.querySelector('.edit-courtDate').value || '',
+            issueDate: formEl.querySelector('.edit-issueDate').value || '',
             attorney: formEl.querySelector('.edit-attorney').value.trim(),
             notes: formEl.querySelector('.edit-notes').value.trim(),
             phoneNumbers: formEl.querySelector('.edit-phoneNumbers').value.trim(),
@@ -1456,6 +1475,8 @@
     $('#defendant').value = '';
     $('#extraDefendants').value = '';
     $('#serviceAddress').value = '';
+    $('#courtDate').value = '';
+    $('#issueDate').value = '';
     $('#attorney').value = '';
     aliasAskedFor = null;
     $('#caseNotes').value = '';
@@ -1783,6 +1804,8 @@
       defendant: primaryDefendant,
       defendants,
       serviceAddress: $('#serviceAddress').value.trim(),
+      courtDate: $('#courtDate').value || null,
+      issueDate: $('#issueDate').value || null,
       attorney: $('#attorney').value.trim(),
       notes: $('#caseNotes').value.trim(),
       phoneNumbers: $('#casePhoneNumbers').value.trim(),

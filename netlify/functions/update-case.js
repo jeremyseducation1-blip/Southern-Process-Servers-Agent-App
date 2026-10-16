@@ -19,11 +19,26 @@ exports.handler = async (event) => {
     // is left alone here (it's just a label now, not the lookup key, but
     // changing it wouldn't reflect in the row's id/storage paths, so it's
     // simplest to keep it fixed and log a new paper if it was truly wrong).
-    const editable = ['courtType', 'county', 'state', 'caseType', 'plaintiff', 'defendant', 'defendants', 'serviceAddress', 'attorney', 'isAlias', 'notes', 'phoneNumbers'];
+    const editable = ['courtType', 'county', 'state', 'caseType', 'plaintiff', 'defendant', 'defendants', 'serviceAddress', 'attorney', 'isAlias', 'notes', 'phoneNumbers', 'courtDate', 'issueDate'];
+    const previousCourtDate = existing.courtDate || null;
     for (const key of editable) {
       if (Object.prototype.hasOwnProperty.call(fields, key)) {
-        existing[key] = fields[key];
+        if (key === 'courtDate' || key === 'issueDate') {
+          const v = typeof fields[key] === 'string' ? fields[key].trim() : '';
+          if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+            return { statusCode: 400, body: `${key} must be a date (YYYY-MM-DD).` };
+          }
+          existing[key] = v || null;
+        } else {
+          existing[key] = fields[key];
+        }
       }
+    }
+
+    // Court dates move. Keep a trail of what it was and when it changed.
+    if ((existing.courtDate || null) !== previousCourtDate) {
+      existing.courtDateHistory = Array.isArray(existing.courtDateHistory) ? existing.courtDateHistory : [];
+      existing.courtDateHistory.push({ from: previousCourtDate, to: existing.courtDate || null, changedAt: new Date().toISOString() });
     }
 
     // Attorney or alias status may have just changed -- recompute whether

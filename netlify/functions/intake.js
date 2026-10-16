@@ -7,6 +7,11 @@ const { putCase, getCase, makePaperId } = require('./lib/caseStore');
 // Intake does NOT notify Kevin -- it's purely for Jeremy's own case
 // tracking / inventory. Kevin only ever gets emailed on a return or a
 // completed affidavit.
+function validDate(v) {
+  const s = typeof v === 'string' ? v.trim() : '';
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
@@ -60,6 +65,11 @@ exports.handler = async (event) => {
         ? caseInfo.defendants
         : [{ name: caseInfo.defendant || '', served: false }],
       serviceAddress: caseInfo.serviceAddress || '',
+      // Both optional YYYY-MM-DD. courtDate can change later (Edit);
+      // issueDate is the date on the summons/warrant and starts the
+      // 60-day (General Sessions) / 90-day expiration clock.
+      courtDate: validDate(caseInfo.courtDate),
+      issueDate: validDate(caseInfo.issueDate),
       notes: caseInfo.notes || '',
       phoneNumbers: caseInfo.phoneNumbers || '',
       attorney,

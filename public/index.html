@@ -45,6 +45,12 @@
         <label>Plaintiff
           <input type="text" id="plaintiff" placeholder="River Trace Estates HOA">
         </label>
+        <label>Court date (if the paper has one)
+          <input type="date" id="courtDate">
+        </label>
+        <label>Issued on (date printed on the summons/warrant — starts the 60/90-day expiration)
+          <input type="date" id="issueDate">
+        </label>
         <label>Defendant
           <input type="text" id="defendant" placeholder="Edilia Tello">
         </label>
@@ -248,6 +254,7 @@
   </main>
 
   <script src="/js/signature-pad.js"></script>
+  <script src="/js/priority.js"></script>
   <script src="/js/app.js"></script>
 </body>
 </html>

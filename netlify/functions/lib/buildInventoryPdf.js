@@ -1,5 +1,6 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { listOpenCases } = require('./caseStore');
+const { assess, pretty } = require('./priority');
 
 // Monday of the week a YYYY-MM-DD date falls in (local-parts parse, same
 // as the rest of the app -- see mondayOfWeek in buildWeekInvoicePdf.js).
@@ -39,6 +40,17 @@ async function buildInventoryPdf() {
     if (b === null) return -1;
     return a < b ? -1 : 1;
   });
+  // Court-date / expiration urgency for every open case.
+  const info = new Map(openCases.map((c) => [c.id, assess(c)]));
+  const levelRank = { past: 0, high: 1, soon: 2, ok: 3 };
+  const needsAttention = openCases
+    .filter((c) => info.get(c.id).level !== 'ok')
+    .sort((a, b) => {
+      const A = info.get(a.id), B = info.get(b.id);
+      return levelRank[A.level] - levelRank[B.level] || A.sortKey - B.sortKey;
+    });
+  const levelColor = { past: rgb(0.75, 0, 0), high: rgb(0.75, 0, 0), soon: rgb(0.8, 0.45, 0), ok: rgb(0.3, 0.3, 0.3) };
+  const levelTag = { past: 'PAST DUE', high: 'HIGH', soon: 'SOON', ok: '' };
   const label = `Inventory — All Open Cases as of ${new Date().toLocaleDateString('en-US')}`;
 
   const doc = await PDFDocument.create();
@@ -63,7 +75,33 @@ async function buildInventoryPdf() {
     y -= 24;
   }
 
-  const entryHeight = 16 + 14 + 14 + 20;
+  // ---- Priority block: what to chase first (court dates + expirations) ----
+  if (needsAttention.length) {
+    page.drawText(`Needs attention first — ${needsAttention.length}`, { x: left, y, size: 13, font: bold, color: rgb(0.75, 0, 0) });
+    y -= 6;
+    page.drawLine({ start: { x: left, y }, end: { x: 552, y }, thickness: 0.5, color: rgb(0.75, 0, 0) });
+    y -= 18;
+    needsAttention.forEach((c) => {
+      if (y - 44 < bottom) {
+        page = doc.addPage([612, 792]);
+        y = top;
+      }
+      const a = info.get(c.id);
+      const tag = `[${levelTag[a.level]}]`;
+      const tagW = bold.widthOfTextAtSize(tag, 11);
+      page.drawText(tag, { x: left, y, size: 11, font: bold, color: levelColor[a.level] });
+      page.drawText(`${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`, { x: left + tagW + 8, y, size: 11, font: bold });
+      y -= 14;
+      page.drawText(`Case No. ${c.caseNo || 'N/A'}   Attorney: ${c.attorney || ''}   —   ${a.reasons.join('; ')}`, {
+        x: left + 14, y, size: 10, font, color: levelColor[a.level]
+      });
+      y -= 18;
+    });
+    y -= 10;
+    page.drawText('All open cases, by week received', { x: left, y, size: 13, font: bold });
+    y -= 22;
+  }
+
   let n = 0;
 
   weekKeys.forEach((key) => {
@@ -73,7 +111,7 @@ async function buildInventoryPdf() {
     );
 
     // Keep a week heading from being stranded at the bottom of a page.
-    if (y - 30 - entryHeight < bottom) {
+    if (y - 30 - 64 < bottom) {
       page = doc.addPage([612, 792]);
       y = top;
     }
@@ -83,6 +121,11 @@ async function buildInventoryPdf() {
     y -= 18;
 
     group.forEach((c) => {
+      const a = info.get(c.id);
+      const dateBits = [];
+      if (a.courtDate) dateBits.push(`Court: ${pretty(a.courtDate)}`);
+      if (a.expiresOn) dateBits.push(`Expires: ${pretty(a.expiresOn)}${a.estimated ? ' (est.)' : ''}`);
+      const entryHeight = 16 + 14 + 14 + (dateBits.length ? 14 : 0) + 20;
       if (y - entryHeight < bottom) {
         page = doc.addPage([612, 792]);
         y = top;
@@ -114,6 +157,12 @@ async function buildInventoryPdf() {
           size: 10,
           font,
           color: rgb(0.3, 0.3, 0.3)
+        });
+        y -= 14;
+      }
+      if (dateBits.length) {
+        page.drawText(dateBits.join('   |   ') + (levelTag[a.level] ? `   —   ${levelTag[a.level]}` : ''), {
+          x: left + 14, y, size: 10, font: a.level === 'ok' ? font : bold, color: levelColor[a.level]
         });
         y -= 14;
       }

@@ -248,7 +248,14 @@
   // One tap: grab GPS, send it; the server stamps the time. Then offers a
   // quick note (saved separately, so the stamp isn't delayed by typing).
   // Returns the server result, or null if it failed/was cancelled.
-  async function recordArrival(c, btn) {
+  //
+  // opts.promptNote (default true): ask for the note with confirm/prompt
+  //   dialogs afterward. The case-row "Log attempt" button passes false and
+  //   opens its own attempt form instead.
+  // opts.onError(err): called instead of the default alert when the
+  //   location/recording fails (lets the caller offer a fallback).
+  async function recordArrival(c, btn, opts) {
+    const promptNote = !opts || opts.promptNote !== false;
     const original = btn.innerHTML;
     btn.disabled = true;
     btn.textContent = 'Getting location…';
@@ -270,6 +277,7 @@
       }
       const when = centralTime(out.visit.at);
       const acc = out.visit.accuracy != null ? ` (location accurate to about ${out.visit.accuracy} m)` : '';
+      if (!promptNote) return out;
       if (out.attempt) {
         const wantNote = confirm(
           `Recorded: attempt ${out.attempt.n} at ${when}${acc}.\n\n` +
@@ -296,7 +304,8 @@
       }
       return out;
     } catch (err) {
-      alert('Not recorded — ' + err.message);
+      if (opts && typeof opts.onError === 'function') opts.onError(err);
+      else alert('Not recorded — ' + err.message);
       return null;
     } finally {
       btn.disabled = false;
@@ -328,7 +337,7 @@
           `<button type="button" class="btn secondary route-pick-btn" style="margin-top:.4rem;">${pos >= 0 ? 'Remove from route' : 'Add to route'}</button> ` +
           `<a class="btn secondary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" ` +
           `href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">Navigate</a> ` +
-          `<button type="button" class="btn primary route-here-btn" style="margin-top:.4rem;">📍 I'm here</button>` +
+          `<button type="button" class="btn primary route-here-btn" style="margin-top:.4rem;">📍 Log attempt (I'm here)</button>` +
           `</div>`
         );
       })
@@ -658,7 +667,8 @@
                   : '';
                 return (
                   `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}${gps} ` +
-                  `<a href="#" class="edit-attempt-link" data-id="${c.id}" data-n="${a.n}">Edit</a></div>`
+                  `<a href="#" class="edit-attempt-link" data-id="${c.id}" data-n="${a.n}">Edit</a> · ` +
+                  `<a href="#" class="remove-attempt-link" data-id="${c.id}" data-n="${a.n}">Remove</a></div>`
                 );
               })
               .join('') +
@@ -685,12 +695,9 @@
             : '';
         const editBtn = `<button type="button" class="btn secondary edit-case-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit</button>`;
         const nextAttemptN = Math.min(3, sortedAttempts.length + 1);
-        const imHereBtn = c.status !== 'closed'
-          ? `<button type="button" class="btn primary im-here-btn" data-id="${c.id}" style="margin-top:.4rem;">📍 I'm here</button>`
-          : '';
         const logAttemptBtn = sortedAttempts.length >= 3
           ? ''
-          : `<button type="button" class="btn secondary log-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">+ Log attempt ${nextAttemptN}</button>`;
+          : `<button type="button" class="btn primary log-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">📍 Log attempt ${nextAttemptN} (I'm here)</button>`;
         // Alias cases can jump straight to the Affidavit section, with
         // the Case fields auto-filled and attempts already checked --
         // no need to retype the case number/defendant up there manually.
@@ -729,7 +736,7 @@
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${imHereBtn}${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${logAttemptBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
+          `<div>${logAttemptBtn}${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
@@ -864,7 +871,7 @@
     // null, n is the next open slot) and "Edit" on an already-logged
     // attempt (existingAttempt pre-fills the fields, n is that same
     // attempt number so saving overwrites it rather than adding a new one).
-    function openAttemptForm(c, n, existingAttempt) {
+    function openAttemptForm(c, n, existingAttempt, justRecorded) {
       const formEl = caseSearchResults.querySelector(`.attempt-log-form[data-attempt-form="${CSS.escape(c.id)}"]`);
       if (!formEl) return;
 
@@ -873,11 +880,16 @@
         return;
       }
 
-      const isEdit = !!existingAttempt;
+      const isEdit = !!existingAttempt && !justRecorded;
       const existingDate = existingAttempt?.date || '';
       const existingNote = existingAttempt?.note || '';
 
-      formEl.innerHTML = `
+      const stampBanner = justRecorded && existingAttempt && existingAttempt.visitAt
+        ? `<p class="hint">📍 Attempt ${n} recorded at ${centralTime(existingAttempt.visitAt)}` +
+          `${existingAttempt.accuracy != null ? ' (location accurate to about ' + existingAttempt.accuracy + ' m)' : ''}. ` +
+          `Add what happened and save. (Closing this form keeps the attempt; add the note later with Edit.)</p>`
+        : '';
+      formEl.innerHTML = stampBanner + `
         <label>Attempt ${n} date <input type="date" class="attempt-log-date" value="${existingDate}"></label>
         <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt">${existingNote.replace(/</g, '&lt;')}</textarea></label>
         <label class="file-drop">
@@ -957,8 +969,11 @@
       });
     }
 
+    // ONE button: stamps the visit (GPS + server time) AND creates the
+    // attempt, then opens the form so the note goes on that same attempt.
+    // If the phone can't give a location, offers to log it without a stamp.
     caseSearchResults.querySelectorAll('.log-attempt-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
+      btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
         const c = cases.find((x) => x.id === id);
         if (!c) return;
@@ -969,7 +984,41 @@
           alert('This case already has all 3 attempts logged.');
           return;
         }
-        openAttemptForm(c, n, null);
+
+        let failure = null;
+        const out = await recordArrival(c, btn, { promptNote: false, onError: (err) => { failure = err; } });
+        if (failure) {
+          if (confirm(`Couldn't get your location (${failure.message})\n\nLog attempt ${n} WITHOUT a GPS stamp?`)) {
+            openAttemptForm(c, n, null);
+          }
+          return;
+        }
+        if (!out || out.duplicate || !out.attempt) return;
+        allCasesCache = null;
+        c.attempts = (c.attempts || []).concat([out.attempt]);
+        openAttemptForm(c, out.attempt.n, out.attempt, true);
+      });
+    });
+
+    caseSearchResults.querySelectorAll('.remove-attempt-link').forEach((link) => {
+      link.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const n = parseInt(link.dataset.n, 10);
+        const c = cases.find((x) => x.id === link.dataset.id);
+        if (!c) return;
+        if (!confirm(`Remove attempt ${n} from ${c.defendant || 'this case'}?\n\nIt will no longer show on the case or the affidavit.`)) return;
+        try {
+          const res = await fetch('/.netlify/functions/remove-attempt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: c.id, attemptNumber: n })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          allCasesCache = null;
+          caseSearchInput.dispatchEvent(new Event('input'));
+        } catch (err) {
+          alert('Failed to remove — try again. (' + err.message + ')');
+        }
       });
     });
 
@@ -1122,15 +1171,6 @@
           btn.disabled = false;
           btn.textContent = original;
         }
-      });
-    });
-
-    caseSearchResults.querySelectorAll('.im-here-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
-        const c = cases.find((x) => x.id === btn.dataset.id);
-        if (!c) return;
-        const out = await recordArrival(c, btn);
-        if (out) caseSearchInput.dispatchEvent(new Event('input'));
       });
     });
 

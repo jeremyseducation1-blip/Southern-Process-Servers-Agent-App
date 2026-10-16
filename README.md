@@ -124,9 +124,22 @@ type — matches everything ever logged, open or closed. Each result shows:
 - **View return PDF / View affidavit PDF** — when one's on file.
 - **No return on file — still open** — a clear red flag when a case is open
   with nothing attached yet.
+- **Upload return & send to Kevin** — pick the Genius Scan PDF from your
+  phone; the app emails it to Kevin FIRST, and only if that send succeeds
+  does it save the PDF to the case and mark it returned. If Gmail fails
+  (e.g. expired token) you get an on-screen "EMAIL DID NOT SEND" alert and
+  nothing is marked. Subject is always `<all defendants, first + last> /
+  <attorney last name>`. PDFs over 4 MB are refused (Netlify's request
+  limit) -- re-export smaller from Genius Scan. After picking the PDF, one
+  form asks for return date, outcome, which defendant(s) it covers, and
+  **notes for Kevin** -- the notes go in the email body (under "Notes:") and
+  are saved on the case. Notes are REQUIRED for any outcome other than
+  "Served" (e.g. Return Not Found), enforced on the screen and server-side.
 - **Mark returned (no email)** — for backlog cases handled outside the app
   (e.g. before this version existed); closes the case out without sending
-  anything.
+  anything. Tapping it first shows a checkpoint: "Did you already scan the
+  return and email it to Kevin?" -- OK continues, Cancel stops with nothing
+  marked. A return isn't complete until Kevin has it.
 - **Edit** — fix a typo'd field after the fact (case number itself isn't
   editable — it's the lookup key; log a fresh entry if it was genuinely
   wrong).
@@ -137,9 +150,8 @@ type — matches everything ever logged, open or closed. Each result shows:
 
 - **My Weekly Log** — every case grouped by the week it was *received*
   (intake date). Tap a week to download a PDF listing everything logged that
-  week.
-- **Monthly Open-Case Report** — grouped by intake month, only cases still
-  open. Tap a month to download.
+  week. (The old Monthly Open-Case Report was removed — redundant next to
+  this.)
 - **Weekly Invoice** — grouped by the week a paper was actually *returned/
   served* (not received), each entry showing its outcome. A case logged
   months ago that gets served this week lands on *this* week's invoice.
@@ -160,8 +172,9 @@ be two separate things (a Friday invoice email and a Sunday inventory email)
 that's what this does now.
 
 Invoice page: same $60-per-case billing as the on-demand "Weekly Invoice"
-button, logged the same way (shows up in "My Invoices" / Kevin's invoice
-history). Inventory page: numbered list of every case still open, case style
+button, logged the same way (shows up in Kevin's invoice history on his
+share link — the app's own "My Invoices" list was removed as redundant next
+to "Weekly Invoice"). Inventory page: numbered list of every case still open, case style
 + case number + attorney's last name, with outstanding defendant(s) called
 out for multi-defendant cases and a note when a return's already gone out
 but the affidavit's still pending.
@@ -296,12 +309,13 @@ signature/stamp info -- just the record that an attempt happened and when.
 ## Invoices are logged, not just generated
 
 Every invoice -- whether from the on-demand "Weekly Invoice" button or the
-automatic Friday email -- gets logged: the PDF saved to a private
+automatic Sunday email -- gets logged: the PDF saved to a private
 `invoices` Storage bucket, and a row (week, case count, total, when it was
-generated) saved to an `invoices` table. "My Invoices" in the app lists
-the full history with a "View PDF" button per week. Kevin's share link
-(only the `ALL`-scope one, not individual firm links -- invoices aren't
-firm-specific) shows this same list.
+generated) saved to an `invoices` table. Kevin's share link (only the
+`ALL`-scope one, not individual firm links -- invoices aren't firm-specific)
+lists the full history with a "View PDF" button per week. (The app's own
+"My Invoices" list was removed -- redundant next to "Weekly Invoice", which
+already opens any week's PDF on demand.)
 
 Regenerating the same week's invoice (e.g. re-running it on demand after
 the automatic send already fired) just replaces that week's logged record
@@ -310,7 +324,7 @@ the automatic send already fired) just replaces that week's logged record
 ## Status color-coding (red/green)
 
 Everywhere status shows -- Search Cases, Kevin's/firm share links, and the
-Weekly Log / Monthly Report PDFs -- open cases show **red**, closed
+Weekly Log PDF -- open cases show **red**, closed
 (returned) cases show **green**, regardless of the specific outcome
 (Served, Return Not Found, Return Requested per Plaintiff all read as
 green once closed). No running tally/count anywhere -- just the color, so
@@ -405,3 +419,76 @@ number, plaintiff, defendant, address, and attorney, but NOT court type or
 county -- leaving "IN THE ___ COURT OF ___ COUNTY, TENNESSEE" blank on the
 generated affidavit even though that data was right there on the case
 record. Fixed: both now get pulled across correctly.
+
+## Return PDFs on share links
+
+Any case with a stored return PDF shows a **View return PDF** button on the
+share-link page (`view.html`). Kevin's `ALL` link can open any case's return;
+a firm link can only open returns for its own attorney's cases (checked
+server-side in `view-return-pdf.js`, which hands back a short-lived signed
+URL). So if an email ever doesn't arrive, "check your link" works.
+
+## Inventory is every open case, grouped by week
+
+The inventory PDF (Sunday email page 2+, and the on-demand button) lists
+EVERY case still open, from every week -- not just the current one. Cases
+are grouped under "Week of <Monday>" headings by the week they were
+received, oldest week first, each heading showing its open count, with a
+total ("43 open cases across 5 weeks") at the top. Numbering runs straight
+through the whole list.
+
+## Invoice week = the day it was entered, not the typed return date
+
+A return can be backdated (written up Oct 1, entered in the app Oct 7).
+Each time a return is marked/sent, the app stamps `completedDate` (today,
+Central time). The Weekly Invoice list and PDF bucket by `completedDate`,
+falling back to the return date for older records that don't have one. So
+a backlogged return lands on the week it was entered, and the return date
+shown on the case stays whatever was typed. To pull an already-entered
+return onto this week's invoice: Search Cases -> Edit return -> tick "Put
+this on this week's invoice" -> Save (return date is left alone). Then
+re-tap that week in Weekly Invoice to regenerate the PDF.
+
+## Invoice outcome labels + breakdown
+
+Every case line on the weekly invoice shows its outcome in parentheses --
+"(Served)", "(Return Not Found)", "(Return Requested per Plaintiff)". Under
+the title is a one-line breakdown of the billed cases, e.g. "7 Served   8
+Return Not Found   1 Return Requested per Plaintiff" (outcomes with none
+that week are left out), which adds up to the "N cases @ $60" total.
+
+## "I'm here" (GPS-stamped stops) + Route
+
+**📍 I'm here** (Search Cases rows and the Route list): one tap at the door
+records the time and the phone's GPS location -- car on or off, no photo
+needed. The TIME is stamped on the server (`log-arrival.js`), not the
+phone's clock, and every tap is appended to the case's `visits` log (never
+edited). The tap also fills the next open attempt slot (1-3) with the
+Central date, GPS point and accuracy; the attempt line then shows "GPS-
+verified <time> (±N m)" with a map link, and Kevin's share link shows the
+GPS-verified time too. The note is left for you to type (offered right
+after the tap, or via Edit) because the affidavit prints it word for word.
+A second tap within 2 minutes is treated as the same stop. Editing an
+attempt later keeps its GPS proof.
+
+Limits: a web page can only read GPS while it's open on screen -- this is a
+tap, not background tracking (that would need a real installed app).
+
+**Route** card: "Load open cases", tap "Add to route" in the order you'll
+drive (Stop 1, 2, ...), then "Open route in Maps" (Google Maps, starts from
+where you are, max 10 stops). Each row also has Navigate (single stop) and
+I'm here. `completedDate`/billing is unaffected.
+
+## No default attorney; Scott Weiss asks "alias?"
+
+The attorney field starts blank (and resets blank after each intake). A blank
+attorney stays blank everywhere -- intake, the affidavit email, subjects --
+instead of being filled in as Scott Weiss. When "Scott Weiss" is typed in
+and "alias summons" isn't checked, a pop-up asks whether it's an alias
+(OK checks the box; Cancel leaves it as a regular summons). It asks once per
+typed value, and again at "Log intake" if the field was never left.
+
+## One button: Log attempt (I'm here) + Remove attempt
+- Each open case now has a single **📍 Log attempt N (I'm here)** button. One tap grabs the phone's GPS, the server stamps the time, and attempt N is created with that proof. The note form then opens for that same attempt, so there is never a second, duplicate attempt. The separate "I'm here" button on case rows is gone (the Route card's button does the same single thing).
+- If the phone can't give a location, you're asked whether to log the attempt without a GPS stamp.
+- Each attempt in the history has a **Remove** link (`remove-attempt` function). The attempt disappears from the case and the affidavit. The underlying GPS visit stays in the append-only `visits` log, flagged `removed`, so tapping again right after an accidental tap works.

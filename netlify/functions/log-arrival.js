@@ -26,9 +26,14 @@ exports.handler = async (event) => {
     const now = new Date();
     existing.visits = Array.isArray(existing.visits) ? existing.visits : [];
 
-    // Double-tap guard: a second tap within 2 minutes is the same stop.
+    existing.attempts = Array.isArray(existing.attempts) ? existing.attempts : [];
+
+    // Double-tap guard: a second tap within 2 minutes is the same stop --
+    // unless that stop's attempt was removed since (accidental tap), in
+    // which case tapping again should work.
     const last = existing.visits[existing.visits.length - 1];
-    if (last && now - new Date(last.at) < 2 * 60 * 1000) {
+    const lastStillCounts = last && !last.removed;
+    if (lastStillCounts && now - new Date(last.at) < 2 * 60 * 1000) {
       return { statusCode: 200, body: JSON.stringify({ duplicate: true, visit: last }) };
     }
 
@@ -42,7 +47,6 @@ exports.handler = async (event) => {
     };
     existing.visits.push(visit);
 
-    existing.attempts = Array.isArray(existing.attempts) ? existing.attempts : [];
     const taken = new Set(existing.attempts.map((a) => a.n));
     const nextN = [1, 2, 3].find((n) => !taken.has(n)) || null;
     let attempt = null;

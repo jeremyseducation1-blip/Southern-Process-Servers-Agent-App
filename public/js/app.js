@@ -313,6 +313,101 @@
     }
   }
 
+  // Builds the attempt form (date, REQUIRED note, optional photo) inside
+  // formEl and wires Save/Cancel. Shared by the Search Cases rows and the
+  // Route card, so notes work the same everywhere. onSaved(savedAttempt)
+  // runs after a successful save.
+  function buildAttemptForm({ formEl, c, n, existingAttempt, justRecorded, onSaved }) {
+      const isEdit = !!existingAttempt && !justRecorded;
+      const existingDate = existingAttempt?.date || '';
+      const existingNote = existingAttempt?.note || '';
+
+      const stampBanner = justRecorded && existingAttempt && existingAttempt.visitAt
+        ? `<p class="hint">📍 Attempt ${n} recorded at ${centralTime(existingAttempt.visitAt)}` +
+          `${existingAttempt.accuracy != null ? ' (location accurate to about ' + existingAttempt.accuracy + ' m)' : ''}. ` +
+          `Add what happened and save. (Closing this form keeps the attempt; add the note later with Edit.)</p>`
+        : '';
+      formEl.innerHTML = stampBanner + `
+        <label>Attempt ${n} date <input type="date" class="attempt-log-date" value="${existingDate}"></label>
+        <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt">${existingNote.replace(/</g, '&lt;')}</textarea></label>
+        <label class="file-drop">
+          <input type="file" class="attempt-log-photo" accept="image/*" capture="environment">
+          <span class="attempt-log-photo-label">Photo of notice (optional evidence)${isEdit ? ' — leave blank to keep the existing photo' : ''}</span>
+        </label>
+        <div class="sig-actions">
+          <button type="button" class="btn primary attempt-log-save-btn">${isEdit ? `Save changes to attempt ${n}` : `Save attempt ${n}`}</button>
+          <button type="button" class="btn secondary attempt-log-cancel-btn">Cancel</button>
+        </div>
+        <p class="status attempt-log-status"></p>
+      `;
+      formEl.hidden = false;
+
+      formEl.querySelector('.attempt-log-cancel-btn').addEventListener('click', () => {
+        formEl.hidden = true;
+      });
+
+      formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
+        const saveBtn = formEl.querySelector('.attempt-log-save-btn');
+        const statusEl = formEl.querySelector('.attempt-log-status');
+        const dateInput = formEl.querySelector('.attempt-log-date');
+        const noteInput = formEl.querySelector('.attempt-log-note');
+        const photoInput = formEl.querySelector('.attempt-log-photo');
+
+        if (!dateInput.value) {
+          statusEl.textContent = 'A date is required.';
+          statusEl.className = 'status err';
+          return;
+        }
+        if (!noteInput.value.trim()) {
+          statusEl.textContent = 'A note is required.';
+          statusEl.className = 'status err';
+          return;
+        }
+
+        const finishSave = async (photoDataUrl) => {
+          saveBtn.disabled = true;
+          statusEl.textContent = 'Saving…';
+          statusEl.className = 'status';
+          try {
+            const res = await fetch('/.netlify/functions/save-attempt', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                caseInfo: { caseNo: c.caseNo, defendant: c.defendant },
+                attemptNumber: n,
+                date: dateInput.value,
+                note: noteInput.value.trim(),
+                photoDataUrl: photoDataUrl || null
+              })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const saved = await res.json().catch(() => null);
+            statusEl.textContent = isEdit ? `Saved — attempt ${n} updated.` : `Saved — attempt ${n} logged.`;
+            statusEl.className = 'status ok';
+            allCasesCache = null;
+            if (typeof onSaved === 'function') onSaved(saved && saved.attempt);
+          } catch (err) {
+            statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
+            statusEl.className = 'status err';
+            saveBtn.disabled = false;
+          }
+        };
+
+        const file = photoInput.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = () => finishSave(reader.result);
+          reader.readAsDataURL(file);
+        } else {
+          // Editing without picking a new photo keeps whatever photo (or
+          // lack of one) was already on file -- passing null here just
+          // means "no new photo," not "erase the existing one" (the
+          // backend only overwrites photoPath when a new one is given).
+          finishSave(null);
+        }
+      });
+  }
+
   // ---------- Route ----------
   const loadRouteBtn = $('#loadRouteBtn');
   const routeList = $('#routeList');
@@ -320,6 +415,13 @@
   const routeCount = $('#routeCount');
   let routeCases = [];
   let routeOrder = []; // case ids, in the order tapped
+  try {
+    const saved = JSON.parse(localStorage.getItem('sps_routeOrder') || '[]');
+    if (Array.isArray(saved)) routeOrder = saved;
+  } catch (_) { /* storage unavailable -- order just won't survive a reload */ }
+  function saveRouteOrder() {
+    try { localStorage.setItem('sps_routeOrder', JSON.stringify(routeOrder)); } catch (_) { /* ignore */ }
+  }
 
   function renderRoute() {
     routeList.innerHTML = routeCases
@@ -338,6 +440,7 @@
           `<a class="btn secondary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" ` +
           `href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">Navigate</a> ` +
           `<button type="button" class="btn primary route-here-btn" style="margin-top:.4rem;">📍 Log attempt (I'm here)</button>` +
+          `<div class="attempt-log-form" hidden></div>` +
           `</div>`
         );
       })
@@ -352,14 +455,36 @@
         const i = routeOrder.indexOf(c.id);
         if (i >= 0) routeOrder.splice(i, 1);
         else routeOrder.push(c.id);
+        saveRouteOrder();
         renderRoute();
       });
       row.querySelector('.route-here-btn').addEventListener('click', async (e) => {
-        const out = await recordArrival(c, e.currentTarget);
-        if (out && out.attempt) {
-          c.attempts = (c.attempts || []).concat([out.attempt]);
-          renderRoute();
+        const formEl = row.querySelector('.attempt-log-form');
+        const existingN = (c.attempts || []).map((a) => a.n);
+        const n = [1, 2, 3].find((num) => !existingN.includes(num));
+        if (!n) {
+          alert('This case already has all 3 attempts logged.');
+          return;
         }
+        // After the note saves, show the saved text and refresh the row.
+        const afterSave = (saved) => {
+          if (saved) c.attempts = (c.attempts || []).filter((a) => a.n !== saved.n).concat([saved]);
+          setTimeout(renderRoute, 700);
+        };
+
+        let failure = null;
+        const out = await recordArrival(c, e.currentTarget, { promptNote: false, onError: (err) => { failure = err; } });
+        if (failure) {
+          if (confirm(`Couldn't get your location (${failure.message})\n\nLog attempt ${n} WITHOUT a GPS stamp?`)) {
+            buildAttemptForm({ formEl, c, n, existingAttempt: null, justRecorded: false, onSaved: afterSave });
+          }
+          return;
+        }
+        if (!out || out.duplicate || !out.attempt) return;
+        c.attempts = (c.attempts || []).concat([out.attempt]);
+        // Same form as everywhere else: note (required) + optional photo,
+        // attached to THIS attempt so nothing gets logged twice.
+        buildAttemptForm({ formEl, c, n: out.attempt.n, existingAttempt: out.attempt, justRecorded: true, onSaved: afterSave });
       });
     });
   }
@@ -389,11 +514,25 @@
 
   $('#clearRouteBtn').addEventListener('click', () => {
     routeOrder = [];
+    saveRouteOrder();
     renderRoute();
   });
 
-  // Google Maps takes the last stop as the destination and up to 9 stops
-  // in between; the route starts from wherever you are right now.
+  // Multi-stop link in Google Maps' path form: .../maps/dir//A/B/C
+  // (the empty first slot = "your location" as the start; the stops follow
+  // in the order tapped). This form is what the Maps app draws as a full
+  // route; the older ?api=1&waypoints= form sometimes dropped the app onto
+  // its stop-editing screen without ever drawing the route.
+  function buildMapsUrl(addrs) {
+    return 'https://www.google.com/maps/dir//' + addrs.map((a) => encodeURIComponent(a)).join('/');
+  }
+
+  function routeAddresses() {
+    return routeOrder
+      .map((id) => routeCases.find((c) => c.id === id))
+      .filter(Boolean);
+  }
+
   $('#openRouteBtn').addEventListener('click', () => {
     if (!routeOrder.length) {
       alert('Add at least one case to the route first.');
@@ -403,12 +542,22 @@
       alert('Google Maps only takes 10 stops at a time. Remove a few and open the rest as a second route.');
       return;
     }
-    const addrs = routeOrder.map((id) => routeCases.find((c) => c.id === id).serviceAddress);
-    const dest = addrs[addrs.length - 1];
-    const waypoints = addrs.slice(0, -1);
-    let url = `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(dest)}`;
-    if (waypoints.length) url += `&waypoints=${encodeURIComponent(waypoints.join('|'))}`;
-    window.open(url, '_blank');
+    window.open(buildMapsUrl(routeAddresses().map((c) => c.serviceAddress)), '_blank');
+  });
+
+  // Backup that always works: directions to ONE stop -- the first stop in
+  // your order that has no attempt logged yet. Tap it again after each stop.
+  $('#nextStopBtn').addEventListener('click', () => {
+    const ordered = routeAddresses();
+    if (!ordered.length) {
+      alert('Add at least one case to the route first.');
+      return;
+    }
+    const next = ordered.find((c) => !(c.attempts || []).some((a) => a.date === new Date().toLocaleDateString('en-CA'))) || ordered[0];
+    window.open(
+      `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(next.serviceAddress)}`,
+      '_blank'
+    );
   });
 
   // Form shown after picking the return PDF. Resolves with
@@ -895,92 +1044,9 @@
         return;
       }
 
-      const isEdit = !!existingAttempt && !justRecorded;
-      const existingDate = existingAttempt?.date || '';
-      const existingNote = existingAttempt?.note || '';
-
-      const stampBanner = justRecorded && existingAttempt && existingAttempt.visitAt
-        ? `<p class="hint">📍 Attempt ${n} recorded at ${centralTime(existingAttempt.visitAt)}` +
-          `${existingAttempt.accuracy != null ? ' (location accurate to about ' + existingAttempt.accuracy + ' m)' : ''}. ` +
-          `Add what happened and save. (Closing this form keeps the attempt; add the note later with Edit.)</p>`
-        : '';
-      formEl.innerHTML = stampBanner + `
-        <label>Attempt ${n} date <input type="date" class="attempt-log-date" value="${existingDate}"></label>
-        <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt">${existingNote.replace(/</g, '&lt;')}</textarea></label>
-        <label class="file-drop">
-          <input type="file" class="attempt-log-photo" accept="image/*" capture="environment">
-          <span class="attempt-log-photo-label">Photo of notice (optional evidence)${isEdit ? ' — leave blank to keep the existing photo' : ''}</span>
-        </label>
-        <div class="sig-actions">
-          <button type="button" class="btn primary attempt-log-save-btn">${isEdit ? `Save changes to attempt ${n}` : `Save attempt ${n}`}</button>
-          <button type="button" class="btn secondary attempt-log-cancel-btn">Cancel</button>
-        </div>
-        <p class="status attempt-log-status"></p>
-      `;
-      formEl.hidden = false;
-
-      formEl.querySelector('.attempt-log-cancel-btn').addEventListener('click', () => {
-        formEl.hidden = true;
-      });
-
-      formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
-        const saveBtn = formEl.querySelector('.attempt-log-save-btn');
-        const statusEl = formEl.querySelector('.attempt-log-status');
-        const dateInput = formEl.querySelector('.attempt-log-date');
-        const noteInput = formEl.querySelector('.attempt-log-note');
-        const photoInput = formEl.querySelector('.attempt-log-photo');
-
-        if (!dateInput.value) {
-          statusEl.textContent = 'A date is required.';
-          statusEl.className = 'status err';
-          return;
-        }
-        if (!noteInput.value.trim()) {
-          statusEl.textContent = 'A note is required.';
-          statusEl.className = 'status err';
-          return;
-        }
-
-        const finishSave = async (photoDataUrl) => {
-          saveBtn.disabled = true;
-          statusEl.textContent = 'Saving…';
-          statusEl.className = 'status';
-          try {
-            const res = await fetch('/.netlify/functions/save-attempt', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                caseInfo: { caseNo: c.caseNo, defendant: c.defendant },
-                attemptNumber: n,
-                date: dateInput.value,
-                note: noteInput.value.trim(),
-                photoDataUrl: photoDataUrl || null
-              })
-            });
-            if (!res.ok) throw new Error(await res.text());
-            statusEl.textContent = isEdit ? `Saved — attempt ${n} updated.` : `Saved — attempt ${n} logged.`;
-            statusEl.className = 'status ok';
-            allCasesCache = null;
-            setTimeout(() => caseSearchInput.dispatchEvent(new Event('input')), 600);
-          } catch (err) {
-            statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
-            statusEl.className = 'status err';
-            saveBtn.disabled = false;
-          }
-        };
-
-        const file = photoInput.files[0];
-        if (file) {
-          const reader = new FileReader();
-          reader.onload = () => finishSave(reader.result);
-          reader.readAsDataURL(file);
-        } else {
-          // Editing without picking a new photo keeps whatever photo (or
-          // lack of one) was already on file -- passing null here just
-          // means "no new photo," not "erase the existing one" (the
-          // backend only overwrites photoPath when a new one is given).
-          finishSave(null);
-        }
+      buildAttemptForm({
+        formEl, c, n, existingAttempt, justRecorded,
+        onSaved: () => setTimeout(() => caseSearchInput.dispatchEvent(new Event('input')), 600)
       });
     }
 

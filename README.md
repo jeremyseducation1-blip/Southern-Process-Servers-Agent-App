@@ -502,3 +502,9 @@ typed value, and again at "Log intake" if the field was never left.
   - SOON: court within 14 days, or expires within 30 days.
 - The inventory PDF (on-demand and the Sunday email) now opens with a "Needs attention first" block sorted by urgency, and every case lists its court date / expiration.
 - Case rows in Search Cases show the court date and expiration with a colored flag.
+
+## Route fixes (Oct 20)
+- **Open route in Maps** now uses Google Maps' path-style link (`/maps/dir//A/B/C`, empty first slot = your location). The older `?api=1&waypoints=` form could leave the Maps app on its stop-editing screen ("N stops") without drawing the route.
+- New **Navigate to next stop** button: directions to the first stop in your order that has no attempt logged today. Always works, since it's a single destination.
+- **Log attempt (I'm here)** on a Route row now opens the same note form as Search Cases (date, required note, optional photo) attached to the attempt it just stamped. Replaces the old pop-up dialogs, which phones can silently suppress. The form code is shared (`buildAttemptForm`).
+- Your route order is remembered on the phone, so it survives going out to Maps and coming back.

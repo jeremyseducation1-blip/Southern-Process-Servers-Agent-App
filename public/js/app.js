@@ -45,7 +45,7 @@
   // Intake start open (the two things used every single time); everything
   // else starts collapsed to cut down on the clutter of scrolling past
   // sections that aren't needed right now.
-  const OPEN_BY_DEFAULT = ['Case'];
+  const OPEN_BY_DEFAULT = ['Case', 'Schedule'];
   document.querySelectorAll('.card').forEach((card) => {
     const heading = card.querySelector('h2');
     if (!heading) return;
@@ -120,6 +120,18 @@
 
   // Returns the Monday of the week a given date falls in, formatted like
   // "Week of September 7". Papers come in Mondays, so weeks are Mon-Sun.
+  // Accepts "YYYY-MM-DD" OR a full ISO timestamp (a case's intakeDate is a
+  // timestamp like 2026-10-21T15:30:12.345Z). Timestamps become the CENTRAL
+  // calendar day they happened on, so a case logged at 8pm Central doesn't
+  // land on "tomorrow" (UTC). Returns null if it isn't a date at all.
+  function calendarDay(s) {
+    const str = String(s || '');
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+    const t = new Date(str);
+    if (isNaN(t.getTime())) return null;
+    return t.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  }
+
   function mondayOfWeek(dateStr) {
     // Parse the YYYY-MM-DD string as LOCAL calendar date parts, not as a
     // UTC timestamp. `new Date("2026-10-05")` is parsed by JS as UTC
@@ -128,10 +140,12 @@
     // local-time methods) would report the wrong weekday and silently
     // bucket a Monday return into the week before it. Building the Date
     // from explicit y/m/d avoids that UTC/local mismatch entirely.
-    const [y, m, day0] = dateStr.split('-').map(Number);
+    const day = calendarDay(dateStr);
+    if (!day) return new Date(NaN);
+    const [y, m, day0] = day.split('-').map(Number);
     const d = new Date(y, m - 1, day0);
-    const day = d.getDay(); // 0 = Sunday, 1 = Monday, ...
-    const diff = day === 0 ? -6 : 1 - day; // shift back to Monday
+    const dow = d.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const diff = dow === 0 ? -6 : 1 - dow; // shift back to Monday
     const monday = new Date(d);
     monday.setDate(d.getDate() + diff);
     monday.setHours(0, 0, 0, 0);
@@ -163,7 +177,8 @@
       cases.forEach((c) => {
         if (!c.intakeDate) return;
         const monday = mondayOfWeek(c.intakeDate);
-        const key = monday.toISOString().slice(0, 10);
+        if (isNaN(monday.getTime())) return; // unreadable date -- skip rather than break the whole log
+        const key = `${monday.getFullYear()}-${String(monday.getMonth() + 1).padStart(2, '0')}-${String(monday.getDate()).padStart(2, '0')}`;
         if (!groups.has(key)) {
           groups.set(key, { label: formatWeekLabel(monday), count: 0 });
         }
@@ -317,7 +332,23 @@
   // formEl and wires Save/Cancel. Shared by the Search Cases rows and the
   // Route card, so notes work the same everywhere. onSaved(savedAttempt)
   // runs after a successful save.
+  //
+  // The form is a POP-UP over the page (not tucked under the case's button
+  // list, where it could open below the visible screen and go unnoticed),
+  // with the cursor already in the note box.
   function buildAttemptForm({ formEl, c, n, existingAttempt, justRecorded, onSaved }) {
+      const old = document.querySelector('.attempt-modal');
+      if (old) old.remove();
+      const overlay = document.createElement('div');
+      overlay.className = 'attempt-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;overflow:auto;padding:1rem;';
+      const panel = document.createElement('div');
+      panel.style.cssText = 'background:var(--panel,#fff);max-width:30rem;margin:0 auto;padding:1rem;border-radius:6px;';
+      overlay.appendChild(panel);
+      document.body.appendChild(overlay);
+      const closeModal = () => overlay.remove();
+      formEl = panel; // everything below builds inside the pop-up
+
       const isEdit = !!existingAttempt && !justRecorded;
       const existingDate = existingAttempt?.date || '';
       const existingNote = existingAttempt?.note || '';
@@ -325,9 +356,9 @@
       const stampBanner = justRecorded && existingAttempt && existingAttempt.visitAt
         ? `<p class="hint">📍 Attempt ${n} recorded at ${centralTime(existingAttempt.visitAt)}` +
           `${existingAttempt.accuracy != null ? ' (location accurate to about ' + existingAttempt.accuracy + ' m)' : ''}. ` +
-          `Add what happened and save. (Closing this form keeps the attempt; add the note later with Edit.)</p>`
+          `Type what happened (e.g. left yellow notice on door) and save. Cancel keeps the attempt; add the note later with Edit.</p>`
         : '';
-      formEl.innerHTML = stampBanner + `
+      formEl.innerHTML = `<h3 style="margin-top:0;">${esc(c.defendant || 'Case')} — attempt ${n}</h3>` + stampBanner + `
         <label>Attempt ${n} date <input type="date" class="attempt-log-date" value="${existingDate}"></label>
         <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt">${existingNote.replace(/</g, '&lt;')}</textarea></label>
         <label class="file-drop">
@@ -340,11 +371,12 @@
         </div>
         <p class="status attempt-log-status"></p>
       `;
-      formEl.hidden = false;
-
       formEl.querySelector('.attempt-log-cancel-btn').addEventListener('click', () => {
-        formEl.hidden = true;
+        closeModal();
+        // A just-stamped attempt stays recorded -- refresh so it shows.
+        if (justRecorded && typeof onSaved === 'function') onSaved(null);
       });
+      setTimeout(() => { const t = formEl.querySelector('.attempt-log-note'); if (t) t.focus(); }, 50);
 
       formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
         const saveBtn = formEl.querySelector('.attempt-log-save-btn');
@@ -385,6 +417,7 @@
             statusEl.textContent = isEdit ? `Saved — attempt ${n} updated.` : `Saved — attempt ${n} logged.`;
             statusEl.className = 'status ok';
             allCasesCache = null;
+            setTimeout(closeModal, 600);
             if (typeof onSaved === 'function') onSaved(saved && saved.attempt);
           } catch (err) {
             statusEl.textContent = 'Failed to save — try again. (' + err.message + ')';
@@ -856,6 +889,16 @@
             deadlineLine = `<div class="case-meta" style="color:${color};">📅 ${bits.join(' · ')}${badge}</div>`;
           }
         }
+        // Next scheduled meeting on this case + a button to add one.
+        const nextMeeting = (c.appointments || [])
+          .filter((a) => a.status === 'scheduled')
+          .sort((x, y) => (x.date + x.time).localeCompare(y.date + y.time))[0];
+        const meetingLine = c.status !== 'closed' && nextMeeting
+          ? `<div class="case-meta">📅 Meeting: ${esc(meetingDateLabel(nextMeeting.date, centralNow().date))}, ${fmtMeetingTime(nextMeeting.time)}${nextMeeting.note ? ' — ' + esc(nextMeeting.note) : ''}</div>`
+          : '';
+        const scheduleBtn = c.status !== 'closed'
+          ? `<button type="button" class="btn secondary schedule-btn" data-id="${c.id}" style="margin-top:.4rem;">📅 Schedule meeting</button>`
+          : '';
         const editBtn = `<button type="button" class="btn secondary edit-case-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit</button>`;
         const nextAttemptN = Math.min(3, sortedAttempts.length + 1);
         const logAttemptBtn = sortedAttempts.length >= 3
@@ -894,13 +937,14 @@
           `<div class="case-meta">${c.serviceAddress || ''}</div>` +
           `<div class="case-meta">Logged ${intake}${c.returnDate ? ' · Returned ' + c.returnDate : ''}${c.closedDate ? ' · Closed ' + new Date(c.closedDate).toLocaleDateString('en-US') : ''}</div>` +
           deadlineLine +
+          meetingLine +
           `<span class="${statusPillClass}">${statusLabel}</span>` +
           missingReturnNote +
           notesBlock +
           phoneBlock +
           defendantBreakdown +
           attemptHistory +
-          `<div>${logAttemptBtn}${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
+          `<div>${logAttemptBtn}${scheduleBtn}${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
@@ -1038,11 +1082,6 @@
     function openAttemptForm(c, n, existingAttempt, justRecorded) {
       const formEl = caseSearchResults.querySelector(`.attempt-log-form[data-attempt-form="${CSS.escape(c.id)}"]`);
       if (!formEl) return;
-
-      if (!formEl.hidden) {
-        formEl.hidden = true;
-        return;
-      }
 
       buildAttemptForm({
         formEl, c, n, existingAttempt, justRecorded,
@@ -1214,6 +1253,14 @@
             saveBtn.disabled = false;
           }
         });
+      });
+    });
+
+    caseSearchResults.querySelectorAll('.schedule-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const c = cases.find((x) => x.id === btn.dataset.id);
+        if (!c) return;
+        if (await openMeetingForm({ c })) refreshSchedule();
       });
     });
 
@@ -1980,4 +2027,214 @@
       completeBtn.disabled = false;
     }
   });
+
+  // ---------- Schedule (meetings with defendants) ----------
+  // A meeting is saved ON the case (date + time + optional note), so the
+  // schedule shows the case's address, phones and notes with nothing to
+  // re-type. Times are Central wall-clock values.
+  const SCHED_TZ = 'America/Chicago';
+  function centralNow() {
+    const d = new Date();
+    return {
+      date: d.toLocaleDateString('en-CA', { timeZone: SCHED_TZ }),
+      time: d.toLocaleTimeString('en-GB', { timeZone: SCHED_TZ, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+    };
+  }
+  function fmtMeetingTime(t) {
+    const [h, m] = String(t || '00:00').split(':').map(Number);
+    return `${(h % 12) || 12}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`;
+  }
+  function plusDays(dateStr, n) {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  }
+  function meetingDateLabel(date, today) {
+    if (date === today) return 'Today';
+    if (date === plusDays(today, 1)) return 'Tomorrow';
+    const [y, m, d] = date.split('-').map(Number);
+    return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+  }
+  // Phone numbers in free text become tap-to-call links.
+  function linkifyPhones(text) {
+    return esc(text).replace(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g, (m) => {
+      const digits = m.replace(/\D/g, '');
+      return digits.length >= 10 ? `<a href="tel:${digits}">${m}</a>` : m;
+    });
+  }
+
+  async function sendAppointment(body) {
+    const res = await fetch('/.netlify/functions/appointment', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // Pop-up to add (or, with appt, reschedule) a meeting for case c.
+  // Resolves true if something was saved, false if cancelled.
+  function openMeetingForm({ c, appt }) {
+    return new Promise((resolve) => {
+      const now = centralNow();
+      const overlay = document.createElement('div');
+      overlay.className = 'meeting-modal';
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;overflow:auto;padding:1rem;';
+      overlay.innerHTML =
+        `<div style="background:var(--panel,#fff);max-width:30rem;margin:0 auto;padding:1rem;border-radius:6px;">` +
+        `<h3 style="margin-top:0;">${appt ? 'Reschedule' : 'Schedule'} meeting — ${esc(c.defendant || 'Case')}</h3>` +
+        `<p class="hint">${esc(c.serviceAddress || '')}${c.caseNo ? ' · Case No. ' + esc(c.caseNo) : ''}</p>` +
+        `<label>Date <input type="date" class="meeting-date" value="${appt ? appt.date : now.date}"></label>` +
+        `<label>Time <input type="time" class="meeting-time" value="${appt ? appt.time : '10:00'}"></label>` +
+        `<label>Note (optional) <textarea class="meeting-note" rows="2" placeholder="e.g. Defendant called back, will be home">${esc(appt ? appt.note : '')}</textarea></label>` +
+        `<div class="sig-actions">` +
+        `<button type="button" class="btn primary meeting-save">${appt ? 'Save new time' : 'Add to schedule'}</button>` +
+        `<button type="button" class="btn secondary meeting-cancel">Cancel</button>` +
+        `</div>` +
+        `<p class="status meeting-status"></p>` +
+        `</div>`;
+      document.body.appendChild(overlay);
+      const q = (sel) => overlay.querySelector(sel);
+      const done = (v) => { overlay.remove(); resolve(v); };
+      q('.meeting-cancel').addEventListener('click', () => done(false));
+      q('.meeting-save').addEventListener('click', async () => {
+        const date = q('.meeting-date').value;
+        const time = q('.meeting-time').value;
+        const status = q('.meeting-status');
+        if (!date || !time) {
+          status.textContent = 'Pick a date and a time.';
+          status.className = 'status meeting-status err';
+          return;
+        }
+        q('.meeting-save').disabled = true;
+        status.textContent = 'Saving…';
+        status.className = 'status meeting-status';
+        try {
+          await sendAppointment(
+            appt
+              ? { id: c.id, action: 'update', appointmentId: appt.id, date, time, note: q('.meeting-note').value }
+              : { id: c.id, action: 'add', date, time, note: q('.meeting-note').value }
+          );
+          done(true);
+        } catch (err) {
+          status.textContent = 'Failed to save — try again. (' + err.message + ')';
+          status.className = 'status meeting-status err';
+          q('.meeting-save').disabled = false;
+        }
+      });
+    });
+  }
+
+  const scheduleList = $('#scheduleList');
+  const scheduleBanner = $('#scheduleBanner');
+
+  function collectMeetings(cases) {
+    const out = [];
+    (cases || []).forEach((c) => {
+      if (c.status === 'closed') return; // returned/closed cases drop off the schedule
+      (c.appointments || []).forEach((a) => {
+        if (a.status === 'scheduled') out.push({ c, a });
+      });
+    });
+    out.sort((x, y) => (x.a.date + x.a.time).localeCompare(y.a.date + y.a.time));
+    return out;
+  }
+
+  function renderSchedule(cases) {
+    const now = centralNow();
+    const meetings = collectMeetings(cases);
+    const isPast = (m) => m.a.date < now.date || (m.a.date === now.date && m.a.time < now.time);
+    const needsAttention = meetings.filter(isPast);
+    const upcoming = meetings.filter((m) => !isPast(m));
+    const todays = upcoming.filter((m) => m.a.date === now.date);
+
+    let banner = '';
+    if (needsAttention.length) {
+      banner += `<p class="status err">⚠️ ${needsAttention.length} meeting${needsAttention.length === 1 ? '' : 's'} past the scheduled time — mark ${needsAttention.length === 1 ? 'it' : 'them'} done or reschedule.</p>`;
+    }
+    banner += todays.length
+      ? `<p class="status ok">📅 ${todays.length} meeting${todays.length === 1 ? '' : 's'} today — next at ${fmtMeetingTime(todays[0].a.time)} (${esc(todays[0].c.defendant || 'defendant')}).</p>`
+      : `<p class="hint">No meetings left today.</p>`;
+    scheduleBanner.innerHTML = banner;
+
+    if (!meetings.length) {
+      scheduleList.innerHTML = '<p class="hint">Nothing scheduled. On any case, tap “📅 Schedule meeting.”</p>';
+      return;
+    }
+
+    const groups = [];
+    if (needsAttention.length) groups.push({ title: 'Needs attention — time has passed', items: needsAttention, late: true });
+    const byDate = new Map();
+    upcoming.forEach((m) => {
+      if (!byDate.has(m.a.date)) byDate.set(m.a.date, []);
+      byDate.get(m.a.date).push(m);
+    });
+    byDate.forEach((items, date) => groups.push({ title: meetingDateLabel(date, now.date), items }));
+
+    scheduleList.innerHTML = groups.map((g) =>
+      `<h3 style="margin:1rem 0 .3rem;${g.late ? 'color:#b00020;' : ''}">${esc(g.title)}</h3>` +
+      g.items.map(({ c, a }) => {
+        const names = Array.isArray(c.defendants) && c.defendants.length
+          ? c.defendants.map((d) => d.name).filter(Boolean).join(', ')
+          : (c.defendant || 'Unknown Defendant');
+        const dateNote = g.late ? ` <span class="hint">(${esc(meetingDateLabel(a.date, now.date))})</span>` : '';
+        return (
+          `<div class="case-row" data-meeting-case="${esc(c.id)}" data-meeting-id="${esc(a.id)}">` +
+          `<div class="case-style"><strong>${fmtMeetingTime(a.time)}</strong>${dateNote} — ${esc(names)}</div>` +
+          `<div class="case-meta">📍 ${esc(c.serviceAddress || 'No address')}</div>` +
+          `<div class="case-meta">Case No. ${esc(c.caseNo || 'N/A')} — ${esc(c.plaintiff || '')}${c.attorney ? ' — ' + esc(c.attorney) : ''}</div>` +
+          (a.note ? `<div class="case-notes">🗓️ ${esc(a.note)}</div>` : '') +
+          (c.notes ? `<div class="case-notes">📝 ${esc(c.notes)}</div>` : '') +
+          (c.phoneNumbers ? `<div class="case-notes">📞 ${linkifyPhones(c.phoneNumbers).replace(/\n/g, '<br>')}</div>` : '') +
+          `<div>` +
+          (c.serviceAddress
+            ? `<a class="btn primary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">Navigate</a> `
+            : '') +
+          `<a class="btn secondary meeting-ics-btn" style="margin-top:.4rem;display:inline-block;" href="/.netlify/functions/meeting-ics?id=${encodeURIComponent(c.id)}&appt=${encodeURIComponent(a.id)}">Add to calendar</a> ` +
+          `<button type="button" class="btn secondary meeting-done-btn" style="margin-top:.4rem;">Done</button> ` +
+          `<button type="button" class="btn secondary meeting-resched-btn" style="margin-top:.4rem;">Reschedule</button> ` +
+          `<button type="button" class="btn secondary meeting-cancel-btn" style="margin-top:.4rem;">Cancel meeting</button>` +
+          `</div></div>`
+        );
+      }).join('')
+    ).join('');
+
+    scheduleList.querySelectorAll('[data-meeting-id]').forEach((row) => {
+      const c = cases.find((x) => x.id === row.dataset.meetingCase);
+      const a = (c.appointments || []).find((x) => x.id === row.dataset.meetingId);
+      const change = async (action) => {
+        try {
+          await sendAppointment({ id: c.id, action, appointmentId: a.id });
+          await refreshSchedule();
+        } catch (err) {
+          alert('Failed — try again. (' + err.message + ')');
+        }
+      };
+      row.querySelector('.meeting-done-btn').addEventListener('click', () => change('done'));
+      row.querySelector('.meeting-cancel-btn').addEventListener('click', () => {
+        if (confirm(`Cancel the ${fmtMeetingTime(a.time)} meeting with ${c.defendant || 'this defendant'}?`)) change('cancel');
+      });
+      row.querySelector('.meeting-resched-btn').addEventListener('click', async () => {
+        if (await openMeetingForm({ c, appt: a })) await refreshSchedule();
+      });
+    });
+  }
+
+  // Re-fetches cases and redraws the schedule (and the search results,
+  // if open, so a case row's "Meeting:" line stays current).
+  async function refreshSchedule() {
+    allCasesCache = null;
+    try {
+      const cases = await ensureAllCasesLoaded();
+      renderSchedule(cases);
+      if (typeof caseSearchInput !== 'undefined' && caseSearchInput.value.trim()) {
+        caseSearchInput.dispatchEvent(new Event('input'));
+      }
+    } catch (err) {
+      scheduleList.innerHTML = `<p class="status err">Couldn't load the schedule. (${esc(err.message)})</p>`;
+    }
+  }
+  $('#refreshScheduleBtn').addEventListener('click', refreshSchedule);
+  // The first thing you see when you open the app.
+  refreshSchedule();
 })();

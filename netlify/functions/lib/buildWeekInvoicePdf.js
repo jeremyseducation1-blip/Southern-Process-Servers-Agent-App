@@ -10,11 +10,25 @@ const { billingDate } = require('./billingDate');
 const RATE_PER_CASE = 60;
 
 // Same Monday-of-week grouping used elsewhere in the app.
+// Accepts "YYYY-MM-DD" OR a full ISO timestamp (a case's intakeDate is a
+// timestamp like 2026-10-21T15:30:12.345Z). Timestamps become the CENTRAL
+// calendar day they happened on, so a case logged at 8pm Central doesn't
+// land on "tomorrow" (UTC). Returns null if it isn't a date at all.
+function calendarDay(s) {
+  const str = String(s || '');
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
+  const t = new Date(str);
+  if (isNaN(t.getTime())) return null;
+  return t.toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+}
+
 function mondayOfWeek(dateStr) {
   // Parse YYYY-MM-DD as LOCAL calendar date parts (not a UTC timestamp --
   // see the matching comment in public/js/app.js) so this always buckets
   // the same way the browser does, regardless of server timezone.
-  const [y, m, day0] = dateStr.split('-').map(Number);
+  const day0s = calendarDay(dateStr);
+  if (!day0s) return new Date(NaN);
+  const [y, m, day0] = day0s.split('-').map(Number);
   const d = new Date(y, m - 1, day0);
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day;
@@ -64,7 +78,9 @@ async function buildWeekInvoicePdf(weekKey) {
   const returnedThisWeek = allCases.filter((c) => {
     const bd = billingDate(c);
     if (!bd) return false;
-    return mondayOfWeek(bd).toISOString().slice(0, 10) === weekKey;
+    const mon = mondayOfWeek(bd);
+    if (isNaN(mon.getTime())) return false;
+    return mon.toISOString().slice(0, 10) === weekKey;
   });
 
   const seenBilledCaseNo = new Set();

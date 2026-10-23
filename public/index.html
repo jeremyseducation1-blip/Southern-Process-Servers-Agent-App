@@ -16,6 +16,17 @@
 
   <main class="wrap">
 
+    <!-- Schedule -- meetings set up with defendants. First thing you see:
+         today's meetings with the address, phones and case notes already
+         filled in from the case. Add one from any case (Search Cases ->
+         "Schedule meeting"). -->
+    <section class="card" id="scheduleCard">
+      <h2>Schedule</h2>
+      <div id="scheduleBanner"></div>
+      <div id="scheduleList"><p class="hint">Loading…</p></div>
+      <button type="button" class="btn secondary" id="refreshScheduleBtn">Refresh</button>
+    </section>
+
     <!-- STEP 0: Case info -->
     <section class="card">
       <h2>Case</h2>

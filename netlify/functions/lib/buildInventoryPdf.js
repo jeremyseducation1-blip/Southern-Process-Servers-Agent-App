@@ -5,7 +5,14 @@ const { assess, pretty } = require('./priority');
 // Monday of the week a YYYY-MM-DD date falls in (local-parts parse, same
 // as the rest of the app -- see mondayOfWeek in buildWeekInvoicePdf.js).
 function mondayKey(dateStr) {
-  const [y, m, d0] = String(dateStr).slice(0, 10).split('-').map(Number);
+  // intakeDate is a full timestamp; use the Central calendar day it fell on
+  // (not the UTC date, which is already "tomorrow" after ~7pm Central).
+  const str = String(dateStr || '');
+  const calDay = /^\d{4}-\d{2}-\d{2}$/.test(str)
+    ? str
+    : (isNaN(new Date(str).getTime()) ? null : new Date(str).toLocaleDateString('en-CA', { timeZone: 'America/Chicago' }));
+  if (!calDay) return null;
+  const [y, m, d0] = calDay.split('-').map(Number);
   if (!y || !m || !d0) return null;
   const d = new Date(y, m - 1, d0);
   const day = d.getDay();

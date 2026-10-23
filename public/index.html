@@ -2,107 +2,143 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Return &amp; Affidavit Log</title>
-<link rel="stylesheet" href="/css/style.css">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0B2A5B">
+<title>Southern Process Servers</title>
+<link rel="stylesheet" href="/css/style.css?v=20261023">
+<link rel="stylesheet" href="/css/app-ui.css?v=20261023">
 </head>
-<body>
-  <header class="top-bar">
-    <div class="wrap">
-      <span class="mark">§</span>
-      <h1>Return &amp; Affidavit Log</h1>
+<body class="app-shell">
+
+  <!-- ============ TODAY (home) ============ -->
+  <div class="view" id="view-today">
+    <div class="hero">
+      <div class="hero-row">
+        <div><div class="hero-sub" id="todayDate"></div><h1>Today</h1></div>
+        <span class="pill-yellow" id="todayAttempts"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="statOpen">–</b><span>Open cases</span></div>
+        <div class="stat"><b id="statMeet">–</b><span>Meetings today</span></div>
+        <div class="stat attn"><b id="statAttn">–</b><span>Need attention</span></div>
+      </div>
     </div>
-  </header>
+    <div class="view-body">
+      <div id="nextStopCard" class="next-card"></div>
 
-  <main class="wrap">
-
-    <!-- Schedule -- meetings set up with defendants. First thing you see:
-         today's meetings with the address, phones and case notes already
-         filled in from the case. Add one from any case (Search Cases ->
-         "Schedule meeting"). -->
-    <section class="card" id="scheduleCard">
-      <h2>Schedule</h2>
+      <!-- Schedule -- meetings set up with defendants (add one from any
+           case page with "Schedule meeting"). -->
+      <section class="card" id="scheduleCard">
+      <h2>Meetings</h2>
       <div id="scheduleBanner"></div>
       <div id="scheduleList"><p class="hint">Loading…</p></div>
       <button type="button" class="btn secondary" id="refreshScheduleBtn">Refresh</button>
     </section>
 
-    <!-- STEP 0: Case info -->
-    <section class="card">
-      <h2>Case</h2>
-      <div class="grid-2">
-        <label>Court type
-          <input type="text" id="courtType" placeholder="General Sessions">
-        </label>
-        <label>County
-          <input type="text" id="county" placeholder="Davidson">
-        </label>
-        <label>State
-          <input type="text" id="state" value="Tennessee">
-        </label>
-        <label>Case No.
-          <input type="text" id="caseNo" placeholder="26GC8832">
-        </label>
-        <label>Document type
-          <select id="caseType">
-            <option value="">Select type</option>
-            <option value="Detainer">Detainer</option>
-            <option value="Letter">Letter</option>
-            <option value="Summons">Summons</option>
-            <option value="Civil Warrant">Civil Warrant</option>
-            <option value="Subpoena">Subpoena</option>
-          </select>
-        </label>
-        <label>Plaintiff
-          <input type="text" id="plaintiff" placeholder="River Trace Estates HOA">
-        </label>
-        <label>Court date (if the paper has one)
-          <input type="date" id="courtDate">
-        </label>
-        <label>Issued on (date printed on the summons/warrant — starts the 60/90-day expiration)
-          <input type="date" id="issueDate">
-        </label>
-        <label>Defendant
-          <input type="text" id="defendant" placeholder="Edilia Tello">
-        </label>
-        <label>Additional defendants (comma-separated, if any)
-          <input type="text" id="extraDefendants" placeholder="e.g. John Tello">
-        </label>
-        <label>Service address
-          <input type="text" id="serviceAddress" placeholder="3013 Delta Queen Dr, Nashville, TN 37214">
-        </label>
-        <label>Attorney of record
-          <input type="text" id="attorney" placeholder="Leave blank if you don't know the attorney">
-        </label>
-        <label>Special notes (things Kevin or the firm told you — anything worth not forgetting)
-          <textarea id="caseNotes" rows="3" placeholder="e.g. Kevin said skip weekends on this one, or firm wants photos of the mailbox too"></textarea>
-        </label>
-        <label>Phone numbers (one per line — from the firm's list, or whoever calls you back after a notice)
-          <textarea id="casePhoneNumbers" rows="2" placeholder="e.g. 615-555-1234 (from firm list)&#10;615-555-5678 (defendant called back 9/20)"></textarea>
-        </label>
-        <label class="check-row">
-          <input type="checkbox" id="isAlias">
-          This is an alias summons
-        </label>
+      <section class="card" id="attentionCard">
+        <h2>Needs attention</h2>
+        <div id="attentionList"><p class="hint">Loading…</p></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============ CASES (search + list) ============ -->
+  <div class="view" id="view-cases" hidden>
+    <div class="hero">
+      <div class="hero-row"><div><h1>Cases</h1></div></div>
+      <input type="text" id="caseSearchInput" placeholder="Name, case no., or address" aria-label="Search cases">
+      <div class="chips" id="caseChips">
+        <button type="button" class="chip on" data-filter="open">Open</button>
+        <button type="button" class="chip" data-filter="priority">Priority</button>
+        <button type="button" class="chip" data-filter="meetings">Meetings</button>
+        <button type="button" class="chip" data-filter="closed">Closed</button>
       </div>
-
-      <!-- Intake, merged into Case -- just a button, not its own section. -->
-      <p class="hint">Enter the warrant/summons info above as soon as you receive it, then log it. Kevin isn't notified at this step.</p>
-      <button type="button" class="btn primary" id="sendIntakeBtn">Log intake</button>
-      <p class="status" id="intakeStatus"></p>
-
-      <!-- Search Cases, merged into Case -- find any case fast instead of
-           digging through old photos when a firm or Kevin calls asking
-           about something from months back. -->
-      <p class="hint">Search by defendant, plaintiff, case number, or address — matches everything you've ever logged, open or closed.</p>
-      <input type="text" id="caseSearchInput" placeholder="e.g. Tello, or 26GC8832, or Delta Queen Dr">
+    </div>
+    <div class="view-body">
+      <p class="hint" id="casesHint">Search matches everything you've ever logged, open or closed.</p>
       <div id="caseSearchResults"></div>
-    </section>
+    </div>
+  </div>
 
-    <!-- Route -- today's stops. Tap cases in the order you'll drive them,
-         open the whole route in Google Maps, and tap "Log attempt" at each
-         door (works with the car on or off). -->
-    <section class="card">
+  <!-- ============ NEW CASE (intake, 3 steps) ============ -->
+  <div class="view" id="view-new" hidden>
+    <div class="hero">
+      <div class="hero-row"><div><div class="hero-sub" id="newStepLabel">Step 1 of 3: the basics</div><h1>New case</h1></div></div>
+      <div class="progress"><span class="on"></span><span></span><span></span></div>
+    </div>
+    <div class="view-body">
+      <section class="card" id="intakeCard">
+        <div class="grid-2">
+          <label data-step="2">Court type
+            <input type="text" id="courtType" placeholder="General Sessions">
+          </label>
+          <label data-step="2">County
+            <input type="text" id="county" placeholder="Davidson">
+          </label>
+          <label data-step="2">State
+            <input type="text" id="state" value="Tennessee">
+          </label>
+          <label data-step="1">Case No.
+            <input type="text" id="caseNo" placeholder="26GC8832">
+          </label>
+          <label data-step="2">Document type
+            <select id="caseType">
+              <option value="">Select type</option>
+              <option value="Detainer">Detainer</option>
+              <option value="Letter">Letter</option>
+              <option value="Summons">Summons</option>
+              <option value="Civil Warrant">Civil Warrant</option>
+              <option value="Subpoena">Subpoena</option>
+            </select>
+          </label>
+          <label data-step="2">Plaintiff
+            <input type="text" id="plaintiff" placeholder="River Trace Estates HOA">
+          </label>
+          <label data-step="1">Court date (if the paper has one)
+            <input type="date" id="courtDate">
+          </label>
+          <label data-step="1">Issued on (date printed on the summons/warrant — starts the 60/90-day expiration)
+            <input type="date" id="issueDate">
+          </label>
+          <label data-step="1">Defendant
+            <input type="text" id="defendant" placeholder="Edilia Tello">
+          </label>
+          <label data-step="1">Additional defendants (comma-separated, if any)
+            <input type="text" id="extraDefendants" placeholder="e.g. John Tello">
+          </label>
+          <label data-step="1">Service address
+            <input type="text" id="serviceAddress" placeholder="3013 Delta Queen Dr, Nashville, TN 37214">
+          </label>
+          <label data-step="2">Attorney of record
+            <input type="text" id="attorney" placeholder="Leave blank if you don't know the attorney">
+          </label>
+          <label data-step="3">Special notes (things Kevin or the firm told you — anything worth not forgetting)
+            <textarea id="caseNotes" rows="3" placeholder="e.g. Kevin said skip weekends on this one, or firm wants photos of the mailbox too"></textarea>
+          </label>
+          <label data-step="3">Phone numbers (one per line — from the firm's list, or whoever calls you back after a notice)
+            <textarea id="casePhoneNumbers" rows="2" placeholder="e.g. 615-555-1234 (from firm list)&#10;615-555-5678 (defendant called back 9/20)"></textarea>
+          </label>
+          <label data-step="2" class="check-row">
+            <input type="checkbox" id="isAlias">
+            This is an alias summons
+          </label>
+        </div>
+        <div class="step-actions">
+          <button type="button" class="btn secondary" id="stepBackBtn" hidden>Back</button>
+          <button type="button" class="btn primary" id="stepNextBtn">Next</button>
+        </div>
+        <button type="button" class="btn primary" id="sendIntakeBtn" hidden>Log intake</button>
+        <p class="hint" id="intakeHint" hidden>Enter the warrant/summons info as soon as you receive it. Kevin isn't notified at this step.</p>
+        <p class="status" id="intakeStatus"></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============ ROUTE ============ -->
+  <div class="view" id="view-route" hidden>
+    <div class="hero"><div class="hero-row"><div><h1>Route</h1><div class="hero-sub">Tap cases in the order you'll drive them</div></div></div></div>
+    <div class="view-body">
+      <section class="card">
       <h2>Route</h2>
       <p class="hint">Load your open cases, tap them in the order you'll drive, then open the whole route in Google Maps. At each stop tap "Log attempt (I'm here)" — it records the attempt with the time and your location whether or not the car is turned off.</p>
       <button type="button" class="btn secondary" id="loadRouteBtn">Load open cases</button>
@@ -114,11 +150,14 @@
       </div>
       <div id="routeList"></div>
     </section>
+    </div>
+  </div>
 
-    <!-- Logs -- Jeremy's own record-keeping view: every case grouped by
-         the week it was received. (Monthly Open-Case Report was removed
-         -- redundant alongside the weekly log.) -->
-    <section class="card">
+  <!-- ============ PAPERWORK ============ -->
+  <div class="view" id="view-paperwork" hidden>
+    <div class="hero"><div class="hero-row"><div><h1>Paperwork</h1><div class="hero-sub">Logs, invoices, reports, affidavit and sharing</div></div></div></div>
+    <div class="view-body">
+      <section class="card">
       <h2>Logs</h2>
 
       <h3>Weekly Log</h3>
@@ -126,30 +165,18 @@
       <button type="button" class="btn secondary" id="loadLogBtn">Load log</button>
       <div id="weeklyLog"></div>
     </section>
-
-    <!-- Weekly invoice -- clickable weeks, keyed by RETURN date (not
-         intake date), each opening a PDF of what was actually
-         returned/served that week. (My Invoices was removed -- redundant
-         alongside this; this is the one list now.) -->
-    <section class="card">
+      <section class="card">
       <h2>Weekly Invoice</h2>
       <p class="hint">Tap a week to open a PDF of everything actually returned/served that week (regardless of when it was originally received).</p>
       <button type="button" class="btn secondary" id="loadWeekInvoiceBtn">Load weeks</button>
       <div id="weekInvoiceList"></div>
     </section>
-
-    <!-- On-demand inventory PDF -- same content as the automatic Sunday
-         email to Kevin, but generated right now, no email. -->
-    <section class="card">
+      <section class="card">
       <h2>Inventory (On Demand)</h2>
       <p class="hint">Generate a PDF of every case still open, right now -- same list Kevin gets automatically every Sunday, no email required.</p>
       <button type="button" class="btn secondary" id="generateInventoryBtn">Generate inventory PDF</button>
     </section>
-
-    <!-- Share links -- read-only view-only links for Kevin (sees
-         everything) and each law firm (sees only their own cases). No
-         login, just a token in the URL. -->
-    <section class="card">
+      <section class="card">
       <h2>Share Links</h2>
       <p class="hint">Create a view-only link for Kevin (sees every case) or a specific attorney/firm (sees only their own cases). No login required — anyone with the link can view.</p>
       <label>Scope <input type="text" id="shareScope" placeholder="ALL for Kevin, or e.g. Scott Weiss"></label>
@@ -159,13 +186,7 @@
       <button type="button" class="btn secondary" id="loadShareLinksBtn">Show existing links</button>
       <div id="shareLinksList"></div>
     </section>
-
-    <!-- STEP 1: Return -- hidden for now (Jeremy's using "Mark returned"
-         from Search Cases instead, which is simpler and doesn't require
-         a PDF upload). Left in the DOM rather than deleted so the JS
-         wiring stays intact and this can be turned back on easily later
-         by just removing the hidden attribute. -->
-    <section class="card" id="returnCard" hidden>
+      <section class="card" id="returnCard" hidden>
       <h2>Return</h2>
       <p class="hint">Scan the served/returned paper in Genius Scan, export it as a PDF, then upload that PDF here. It attaches to this case right away — no email gets sent to Kevin from this step. <strong>Exception:</strong> for an alias case with Scott Weiss as attorney, this return still gets bundled and sent automatically when you send the affidavit below.</p>
 
@@ -196,13 +217,7 @@
       </div>
       <p class="status" id="returnStatus"></p>
     </section>
-
-    <!-- Affidavit -- attempts themselves are now logged from Search
-         Cases (tied directly to the case you're looking at, no
-         dropdown/typing ambiguity). This section reads whatever's
-         already been logged for the case typed in the Case section
-         above, rather than making you re-type attempts here. -->
-    <section class="card" id="attemptsCard">
+      <section class="card" id="attemptsCard">
       <h2>Affidavit</h2>
       <p class="hint">Log attempts from Search Cases (below) against the case they're for. Once a case has all 3 attempts (date + note each, no future dates), come back here with that same case number + defendant typed in the Case section above, and the status dropdown unlocks automatically.</p>
 
@@ -260,13 +275,20 @@
       <button type="button" class="btn primary" id="completeAffidavitBtn" disabled>Send affidavit to Kevin</button>
       <p class="status" id="affidavitStatus"></p>
     </section>
+    </div>
+  </div>
 
-    <p style="text-align:center;font-size:.75rem;color:#999;margin-top:1rem;">Build: 2026-09-09 — return/affidavit PDF conversion, search, share links</p>
+  <nav class="tabbar" id="tabbar" aria-label="Main">
+    <button type="button" class="tab" data-view="today"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>Today</span></button>
+    <button type="button" class="tab" data-view="cases"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Cases</span></button>
+    <button type="button" class="tab-new" data-view="new" aria-label="New case">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button type="button" class="tab" data-view="route"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg><span>Route</span></button>
+    <button type="button" class="tab" data-view="paperwork"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg><span>Paperwork</span></button>
+  </nav>
 
-  </main>
-
-  <script src="/js/signature-pad.js"></script>
-  <script src="/js/priority.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/signature-pad.js?v=20261023"></script>
+  <script src="/js/priority.js?v=20261023"></script>
+  <script src="/js/app.js?v=20261023"></script>
 </body>
 </html>

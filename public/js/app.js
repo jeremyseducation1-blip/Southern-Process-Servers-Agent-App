@@ -33,6 +33,7 @@
     $('#caseType').value = c.caseType || '';
     $('#isAlias').checked = true;
 
+    showView('paperwork');
     const card = $('#attemptsCard');
     card.classList.remove('collapsed');
     card.querySelector('h2').scrollIntoView({ behavior: 'smooth' });
@@ -40,18 +41,12 @@
   }
 
   // ---------- Collapsible sections ----------
-  // Every card with an <h2> becomes click-to-expand/collapse -- generic,
-  // not wired per-section, so new cards get this for free. Case and
-  // Intake start open (the two things used every single time); everything
-  // else starts collapsed to cut down on the clutter of scrolling past
-  // sections that aren't needed right now.
-  const OPEN_BY_DEFAULT = ['Case', 'Schedule'];
-  document.querySelectorAll('.card').forEach((card) => {
+  // Only the Paperwork tab's cards collapse (they're the hub rows there);
+  // everything else lives on its own tab and is always open.
+  document.querySelectorAll('#view-paperwork .card').forEach((card) => {
     const heading = card.querySelector('h2');
     if (!heading) return;
-    if (!OPEN_BY_DEFAULT.includes(heading.textContent.trim())) {
-      card.classList.add('collapsed');
-    }
+    card.classList.add('collapsed');
     heading.addEventListener('click', () => {
       card.classList.toggle('collapsed');
     });
@@ -792,7 +787,9 @@
 
   function renderSearchResults(cases, query) {
     if (!cases.length) {
-      caseSearchResults.innerHTML = `<p class="hint">No matches for "${query}".</p>`;
+      caseSearchResults.innerHTML = query
+        ? `<p class="hint">No matches for "${esc(query)}".</p>`
+        : `<p class="hint">Nothing here.</p>`;
       return;
     }
     caseSearchResults.innerHTML = cases
@@ -930,28 +927,89 @@
         const phoneBlock = c.phoneNumbers
           ? `<div class="case-notes">📞 ${c.phoneNumbers.replace(/</g, '&lt;').replace(/\n/g, '<br>')}</div>`
           : '';
+        const pr = window.SPSPriority && c.status !== 'closed' ? window.SPSPriority.assess(c) : null;
+        const dotClass = !pr ? '' : pr.level === 'past' || pr.level === 'high' ? 'red' : pr.level === 'soon' ? 'yellow' : '';
+        let flag = '';
+        if (c.status === 'closed') flag = `<div class="flag green">${esc(statusLabel)}</div>`;
+        else if (pr && pr.level !== 'ok' && pr.reasons.length) flag = `<div class="flag ${dotClass}">${esc(pr.reasons[0])}</div>`;
+        else if (nextMeeting) flag = `<div class="flag blue">Meeting ${esc(meetingDateLabel(nextMeeting.date, centralNow().date))} ${fmtMeetingTime(nextMeeting.time)}</div>`;
+        const bars = [1, 2, 3].map((n) => `<i class="${n <= sortedAttempts.length ? 'on' : ''}"></i>`).join('');
+        const addr = c.serviceAddress || '';
+        const goLink = addr
+          ? `<a class="go-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}&travelmode=driving">Go</a>`
+          : '';
+        const phoneTap = c.phoneNumbers
+          ? `<div class="info-card"><div class="k">PHONE</div><div class="v">${linkifyPhones(c.phoneNumbers).replace(/\n/g, '<br>')}</div></div>`
+          : '';
+        const notesCard = (c.notes || c.returnNotes)
+          ? `<div class="info-card"><div class="k">NOTES</div><div class="v" style="font-weight:500;white-space:pre-wrap;">` +
+            (c.notes ? esc(c.notes) : '') +
+            (c.notes && c.returnNotes ? '<br>' : '') +
+            (c.returnNotes ? 'Return note: ' + esc(c.returnNotes) : '') +
+            `</div></div>`
+          : '';
+        const caseCard =
+          `<div class="info-card"><div class="k">CASE</div>` +
+          `<div class="kv"><span>Case No.</span><span>${esc(c.caseNo || 'N/A')}</span></div>` +
+          `<div class="kv"><span>Plaintiff</span><span>${esc(c.plaintiff || '')}</span></div>` +
+          (c.attorney ? `<div class="kv"><span>Attorney</span><span>${esc(c.attorney)}</span></div>` : '') +
+          (c.caseType ? `<div class="kv"><span>Type</span><span>${esc(c.caseType)}</span></div>` : '') +
+          `<div class="kv"><span>Logged</span><span>${intake}${c.returnDate ? ' · Returned ' + c.returnDate : ''}${c.closedDate ? ' · Closed ' + new Date(c.closedDate).toLocaleDateString('en-US') : ''}</span></div>` +
+          `</div>`;
+        const noPapers = !viewAffidavitBtn && !affidavitBtn && !markAffidavitSentBtn
+          ? `<p class="hint">No affidavit on this case. (Affidavits are for alias summons.)</p>` : '';
+        const noAttempts = !sortedAttempts.length ? `<p class="hint">No attempts logged yet. Tap the yellow button above when you're at the door.</p>` : '';
+        const pill = `<span class="${statusPillClass}">${esc(statusLabel)}</span>`;
         return (
           `<div class="case-row" data-case-row="${c.id}">` +
-          `<div class="case-style">${style}</div>` +
-          `<div class="case-meta">Case No. ${c.caseNo || 'N/A'} — ${c.attorney || ''}${c.caseType ? ' — ' + c.caseType : ''}</div>` +
-          `<div class="case-meta">${c.serviceAddress || ''}</div>` +
-          `<div class="case-meta">Logged ${intake}${c.returnDate ? ' · Returned ' + c.returnDate : ''}${c.closedDate ? ' · Closed ' + new Date(c.closedDate).toLocaleDateString('en-US') : ''}</div>` +
-          deadlineLine +
-          meetingLine +
-          `<span class="${statusPillClass}">${statusLabel}</span>` +
-          missingReturnNote +
-          notesBlock +
-          phoneBlock +
-          defendantBreakdown +
-          attemptHistory +
-          `<div>${logAttemptBtn}${scheduleBtn}${viewReturnBtn}${editReturnBtn}${viewAffidavitBtn}${attemptPhotoBtns}${markBtn}${affidavitBtn}${markAffidavitSentBtn}${editBtn}</div>` +
-          `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
-          `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
+          `<div class="case-summary" role="button" tabindex="0" data-open-case="${c.id}">` +
+          `<span class="dot ${dotClass}"></span>` +
+          `<div class="main"><div class="name">${esc(c.defendant || 'Unknown Defendant')}</div>` +
+          `<div class="addr">${esc(addr)}</div>${flag}</div>` +
+          `<div><div class="bars">${bars}</div><div class="bars-count">${sortedAttempts.length} of 3</div></div>` +
+          `</div>` +
+          `<div class="case-sheet" data-tab="info">` +
+          `<div class="sheet-head">` +
+          `<div class="sheet-top"><button type="button" class="sheet-back" aria-label="Back to cases">‹</button>` +
+          `<div class="sheet-title"><div class="t1">${esc(c.defendant || 'Unknown Defendant')}</div>` +
+          `<div class="t2">Case ${esc(c.caseNo || 'N/A')} · ${esc(c.plaintiff || '')}</div></div>${pill}</div>` +
+          `${logAttemptBtn}` +
+          `</div>` +
+          `<div class="sheet-tabs">` +
+          `<button type="button" class="sheet-tab" data-tab="info">Info</button>` +
+          `<button type="button" class="sheet-tab" data-tab="attempts">Attempts</button>` +
+          `<button type="button" class="sheet-tab" data-tab="return">Return</button>` +
+          `<button type="button" class="sheet-tab" data-tab="papers">Papers</button>` +
+          `</div>` +
+          `<div class="sheet-body">` +
+          `<div class="sheet-pane" data-pane="info">` +
+          `<div class="info-card"><div class="info-row"><div class="grow"><div class="k">SERVICE ADDRESS</div><div class="v">${esc(addr || 'No address')}</div></div>${goLink}</div></div>` +
+          deadlineLine.replace('class="case-meta"', 'class="info-card"') +
+          meetingLine.replace('class="case-meta"', 'class="info-card"') +
+          scheduleBtn +
+          phoneTap + notesCard + caseCard + defendantBreakdown +
+          editBtn +
           `<div class="edit-case-form" data-edit-form="${c.id}" hidden></div>` +
+          `</div>` +
+          `<div class="sheet-pane" data-pane="attempts">` +
+          noAttempts + attemptHistory + attemptPhotoBtns +
+          `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
+          `</div>` +
+          `<div class="sheet-pane" data-pane="return">` +
+          pill + missingReturnNote + markBtn + viewReturnBtn + editReturnBtn +
+          `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
+          `</div>` +
+          `<div class="sheet-pane" data-pane="papers">` +
+          noPapers + viewAffidavitBtn + affidavitBtn + markAffidavitSentBtn +
+          `</div>` +
+          `</div>` +
+          `</div>` +
           `</div>`
         );
       })
       .join('');
+
+    wireCaseSheets();
 
     caseSearchResults.querySelectorAll('.mark-affidavit-sent-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
@@ -1448,28 +1506,12 @@
   }
 
   caseSearchInput.addEventListener('input', () => {
-    const query = caseSearchInput.value.trim().toLowerCase();
     clearTimeout(searchDebounce);
-    if (!query) {
-      caseSearchResults.innerHTML = '';
+    if (!caseSearchInput.value.trim()) {
+      refreshCases();
       return;
     }
-    searchDebounce = setTimeout(async () => {
-      caseSearchResults.innerHTML = '<p class="hint">Searching…</p>';
-      try {
-        const cases = await ensureAllCasesLoaded();
-        const matches = cases.filter((c) => {
-          const haystack = [c.defendant, c.plaintiff, c.caseNo, c.caseType, c.serviceAddress, c.notes, c.returnNotes, c.phoneNumbers, ...(c.defendants || []).map((d) => d.name)]
-            .filter(Boolean)
-            .join(' ')
-            .toLowerCase();
-          return haystack.includes(query);
-        });
-        renderSearchResults(matches, caseSearchInput.value.trim());
-      } catch (err) {
-        caseSearchResults.innerHTML = `<p class="status err">Search failed. (${err.message})</p>`;
-      }
-    }, 250);
+    searchDebounce = setTimeout(refreshCases, 250);
   });
 
   // ---------- Share links (Kevin / law firm read-only views) ----------
@@ -2227,6 +2269,7 @@
     try {
       const cases = await ensureAllCasesLoaded();
       renderSchedule(cases);
+      renderToday(cases);
       if (typeof caseSearchInput !== 'undefined' && caseSearchInput.value.trim()) {
         caseSearchInput.dispatchEvent(new Event('input'));
       }
@@ -2237,4 +2280,240 @@
   $('#refreshScheduleBtn').addEventListener('click', refreshSchedule);
   // The first thing you see when you open the app.
   refreshSchedule();
+
+  // ====================== App shell: tabs, Today, case page ======================
+  let currentSheet = null; // { id, tab } -- the case page that's open, if any
+  let soloCase = false;    // true when the Cases list was swapped for one case (opened from Today)
+  let casesFilter = 'open';
+
+  function showView(name, opts) {
+    opts = opts || {};
+    document.querySelectorAll('.view').forEach((v) => { v.hidden = v.id !== 'view-' + name; });
+    document.querySelectorAll('#tabbar [data-view]').forEach((t) => {
+      t.classList.toggle('on', t.dataset.view === name);
+    });
+    if (!opts.keepSheet) closeSheet({ silent: true });
+    window.scrollTo(0, 0);
+    if (opts.noRefresh) return;
+    if (name === 'today') refreshSchedule();
+    else if (name === 'cases') refreshCases();
+    else if (name === 'route' && !routeList.children.length) loadRouteBtn.click();
+  }
+
+  document.querySelectorAll('#tabbar [data-view]').forEach((t) => {
+    t.addEventListener('click', () => showView(t.dataset.view));
+  });
+
+  function openSheet(id, tab) {
+    const row = caseSearchResults.querySelector(`[data-case-row="${CSS.escape(id)}"]`);
+    if (!row) return false;
+    caseSearchResults.querySelectorAll('.case-row.open').forEach((r) => { if (r !== row) r.classList.remove('open'); });
+    row.classList.add('open');
+    row.querySelector('.case-sheet').dataset.tab = tab || 'info';
+    currentSheet = { id, tab: tab || 'info' };
+    document.body.classList.add('sheet-open');
+    const body = row.querySelector('.sheet-body');
+    if (body) body.scrollTop = 0;
+    return true;
+  }
+
+  function closeSheet(opts) {
+    caseSearchResults.querySelectorAll('.case-row.open').forEach((r) => r.classList.remove('open'));
+    currentSheet = null;
+    document.body.classList.remove('sheet-open');
+    if (soloCase) {
+      soloCase = false;
+      if (!(opts && opts.silent)) refreshCases();
+    }
+  }
+
+  // Called after every render of the Cases list.
+  function wireCaseSheets() {
+    caseSearchResults.querySelectorAll('[data-open-case]').forEach((el) => {
+      const open = () => openSheet(el.dataset.openCase);
+      el.addEventListener('click', open);
+      el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+    });
+    caseSearchResults.querySelectorAll('.sheet-back').forEach((b) => b.addEventListener('click', () => closeSheet()));
+    caseSearchResults.querySelectorAll('.sheet-tab').forEach((b) => {
+      b.addEventListener('click', () => {
+        const sheet = b.closest('.case-sheet');
+        sheet.dataset.tab = b.dataset.tab;
+        if (currentSheet) currentSheet.tab = b.dataset.tab;
+        const body = sheet.querySelector('.sheet-body');
+        if (body) body.scrollTop = 0;
+      });
+    });
+    // A save re-renders the list; put the person back on the same case page / tab.
+    if (currentSheet && !openSheet(currentSheet.id, currentSheet.tab)) {
+      currentSheet = null;
+      document.body.classList.remove('sheet-open');
+    }
+  }
+
+  // Open a case's page from anywhere (Today, attention list). autoLog taps
+  // its Log attempt button for you.
+  async function openCasePage(id, opts) {
+    opts = opts || {};
+    showView('cases', { keepSheet: true, noRefresh: true });
+    const cases = await ensureAllCasesLoaded();
+    const c = cases.find((x) => x.id === id);
+    if (!c) return;
+    if (!caseSearchResults.querySelector(`[data-case-row="${CSS.escape(id)}"]`)) {
+      soloCase = true;
+      renderSearchResults([c], '');
+    }
+    openSheet(id, opts.tab);
+    if (opts.autoLog) {
+      setTimeout(() => {
+        const b = caseSearchResults.querySelector(`[data-case-row="${CSS.escape(id)}"] .log-attempt-btn`);
+        if (b) b.click();
+      }, 0);
+    }
+  }
+
+  // ---------- Cases list: search + filter chips ----------
+  function priorityRank(c) {
+    return window.SPSPriority ? window.SPSPriority.assess(c).sortKey : 99999;
+  }
+  function listForFilter(cases) {
+    const open = cases.filter((c) => c.status !== 'closed');
+    if (casesFilter === 'closed') {
+      return cases.filter((c) => c.status === 'closed')
+        .sort((a, b) => String(b.closedDate || '').localeCompare(String(a.closedDate || ''))).slice(0, 50);
+    }
+    if (casesFilter === 'priority') {
+      return open.filter((c) => window.SPSPriority && window.SPSPriority.assess(c).level !== 'ok')
+        .sort((a, b) => priorityRank(a) - priorityRank(b));
+    }
+    if (casesFilter === 'meetings') {
+      const next = (c) => (c.appointments || []).filter((a) => a.status === 'scheduled')
+        .map((a) => a.date + a.time).sort()[0];
+      return open.filter(next).sort((a, b) => next(a).localeCompare(next(b)));
+    }
+    return open.sort((a, b) => priorityRank(a) - priorityRank(b) || String(b.intakeDate || '').localeCompare(String(a.intakeDate || '')));
+  }
+
+  async function refreshCases() {
+    const raw = caseSearchInput.value.trim();
+    const query = raw.toLowerCase();
+    try {
+      const cases = await ensureAllCasesLoaded();
+      let list;
+      if (query) {
+        list = cases.filter((c) => {
+          const haystack = [c.defendant, c.plaintiff, c.caseNo, c.caseType, c.serviceAddress, c.notes, c.returnNotes, c.phoneNumbers, ...(c.defendants || []).map((d) => d.name)]
+            .filter(Boolean).join(' ').toLowerCase();
+          return haystack.includes(query);
+        });
+      } else {
+        list = listForFilter(cases);
+      }
+      $('#casesHint').textContent = query
+        ? 'Searching every case you\'ve logged, open or closed.'
+        : ({ open: 'Open cases, most urgent first.', priority: 'Open cases with a court date or expiration coming up.', meetings: 'Open cases with a meeting scheduled.', closed: 'Most recent closed cases. Search to find older ones.' })[casesFilter];
+      renderSearchResults(list, raw);
+    } catch (err) {
+      caseSearchResults.innerHTML = `<p class="status err">Couldn't load cases. (${esc(err.message)})</p>`;
+    }
+  }
+
+  document.querySelectorAll('#caseChips .chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      casesFilter = chip.dataset.filter;
+      document.querySelectorAll('#caseChips .chip').forEach((c) => c.classList.toggle('on', c === chip));
+      refreshCases();
+    });
+  });
+
+  // ---------- Today ----------
+  function renderToday(cases) {
+    const now = centralNow();
+    const P = window.SPSPriority;
+    const open = (cases || []).filter((c) => c.status !== 'closed');
+    $('#todayDate').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric', timeZone: SCHED_TZ });
+
+    let attemptsToday = 0;
+    (cases || []).forEach((c) => (c.attempts || []).forEach((a) => { if (a.date === now.date) attemptsToday++; }));
+    $('#todayAttempts').textContent = attemptsToday ? `${attemptsToday} attempt${attemptsToday === 1 ? '' : 's'} logged` : '';
+
+    const meetingsToday = collectMeetings(cases).filter((m) => m.a.date === now.date).length;
+    const attn = P
+      ? open.map((c) => ({ c, pr: P.assess(c) })).filter((x) => x.pr.level !== 'ok').sort((a, b) => a.pr.sortKey - b.pr.sortKey)
+      : [];
+    $('#statOpen').textContent = open.length;
+    $('#statMeet').textContent = meetingsToday;
+    $('#statAttn').textContent = attn.length;
+
+    // Needs attention
+    $('#attentionList').innerHTML = attn.length
+      ? attn.slice(0, 5).map(({ c, pr }) => {
+          const red = pr.level === 'past' || pr.level === 'high';
+          const label = { past: 'Past due', high: 'High', soon: 'Soon' }[pr.level];
+          return `<div class="mini-row" data-attn="${esc(c.id)}"><span class="dot ${red ? 'red' : 'yellow'}"></span>` +
+            `<div><div class="name">${esc(c.defendant || 'Unknown')}</div><div class="sub">${esc(pr.reasons.join('; '))}</div></div>` +
+            `<span class="tag ${red ? 'red' : 'yellow'}">${label}</span></div>`;
+        }).join('')
+      : '<p class="hint">Nothing urgent right now.</p>';
+    $('#attentionList').querySelectorAll('[data-attn]').forEach((row) => {
+      row.addEventListener('click', () => openCasePage(row.dataset.attn));
+    });
+
+    // Next stop: first case in your saved route order with no attempt today.
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem('sps_routeOrder') || '[]'); } catch (e) { order = []; }
+    const stops = order.map((id) => (cases || []).find((c) => c.id === id)).filter((c) => c && c.status !== 'closed' && c.serviceAddress);
+    const nextIdx = stops.findIndex((c) => !(c.attempts || []).some((a) => a.date === now.date));
+    const card = $('#nextStopCard');
+    if (nextIdx === -1) {
+      card.innerHTML =
+        `<div class="eyebrow">NEXT STOP</div>` +
+        `<div class="where">${stops.length ? 'Every stop on your route has an attempt today.' : 'No route planned yet.'}</div>` +
+        `<div class="row"><button type="button" class="btn secondary grow" id="planRouteBtn">${stops.length ? 'View route' : 'Plan today\'s route'}</button></div>`;
+      $('#planRouteBtn').addEventListener('click', () => showView('route'));
+    } else {
+      const c = stops[nextIdx];
+      const n = (c.attempts || []).length;
+      card.innerHTML =
+        `<div class="eyebrow">NEXT STOP <b>Stop ${nextIdx + 1} of ${stops.length}</b></div>` +
+        `<div><div class="who">${esc(c.defendant || 'Unknown')}</div><div class="where">${esc(c.serviceAddress)}</div>` +
+        `<div class="where">Attempts so far: ${n} of 3</div></div>` +
+        `<div class="row">` +
+        (n < 3 ? `<button type="button" class="btn log-attempt-btn grow" id="todayLogBtn">📍 Log attempt</button>` : `<button type="button" class="btn secondary grow" id="todayOpenBtn">Open case</button>`) +
+        `<a class="nav-btn" aria-label="Navigate" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">` +
+        `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></a>` +
+        `</div>`;
+      const logBtn = $('#todayLogBtn');
+      if (logBtn) logBtn.addEventListener('click', () => openCasePage(c.id, { autoLog: true }));
+      const openBtn = $('#todayOpenBtn');
+      if (openBtn) openBtn.addEventListener('click', () => openCasePage(c.id));
+    }
+  }
+
+  // ---------- New case: three short steps ----------
+  const INTAKE_STEP_TITLES = ['the basics', 'who and what court', 'notes and phone numbers'];
+  function setIntakeStep(n) {
+    document.querySelectorAll('#intakeCard [data-step]').forEach((l) => { l.hidden = Number(l.dataset.step) !== n; });
+    document.querySelectorAll('#view-new .progress span').forEach((sp, i) => sp.classList.toggle('on', i < n));
+    $('#newStepLabel').textContent = `Step ${n} of 3: ${INTAKE_STEP_TITLES[n - 1]}`;
+    $('#stepBackBtn').hidden = n === 1;
+    $('#stepNextBtn').hidden = n === 3;
+    $('#sendIntakeBtn').hidden = n !== 3;
+    $('#intakeHint').hidden = n !== 3;
+    window.scrollTo(0, 0);
+    intakeStep = n;
+  }
+  let intakeStep = 1;
+  $('#stepNextBtn').addEventListener('click', () => setIntakeStep(Math.min(3, intakeStep + 1)));
+  $('#stepBackBtn').addEventListener('click', () => setIntakeStep(Math.max(1, intakeStep - 1)));
+  new MutationObserver(() => {
+    if ($('#intakeStatus').textContent === 'Case logged.') {
+      allCasesCache = null;
+      setIntakeStep(1);
+    }
+  }).observe($('#intakeStatus'), { childList: true, characterData: true, subtree: true });
+  setIntakeStep(1);
+
+  // Start on Today.
+  showView('today', { noRefresh: true });
 })();

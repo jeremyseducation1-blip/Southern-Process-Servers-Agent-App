@@ -3,87 +3,50 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Case Status — Return &amp; Affidavit Log</title>
-<link rel="stylesheet" href="css/style.css">
+<title>Case Status — Southern Process Servers</title>
+<meta name="theme-color" content="#0B2A5B">
+<link rel="stylesheet" href="css/style.css?v=20261027">
+<link rel="stylesheet" href="css/app-ui.css?v=20261027">
 <style>
-  .case-row{
-    padding:.8rem 0;
-    border-bottom:1px solid var(--rule);
+  /* Read-only viewer: same blue + yellow look as the app, no tab bar. */
+  body.app-shell.viewer{ padding-bottom:24px; }
+  .viewer .hero{ gap:12px; }
+  .viewer .hero h1{ font-size:1.5rem; }
+  .viewer .hero .hero-sub{ font-size:.85rem; }
+  .viewer .filter-row{ display:flex; gap:10px; }
+  .viewer .filter-row input{ flex:1; min-width:0; height:48px; border:0; border-radius:12px; background:#fff; padding:0 14px; font-size:1rem; color:#0B1F44; font-family:inherit; }
+  .viewer .filter-row input[type=date]{ flex:0 0 auto; width:9.5rem; }
+  .viewer .date-note{ font-size:.72rem; color:#B9C8E6; margin-top:-6px; }
+  .viewer #caseList .case-row,
+  .viewer #invoicesList .case-row{
+    background:#fff; border:0; border-radius:14px; padding:14px; margin:0 0 10px;
+    box-shadow:0 1px 4px rgba(11,42,91,.08);
   }
-  .case-row:last-child{ border-bottom:none; }
-  .case-style{ font-weight:bold; }
-  .case-meta{ font-size:.85rem; color:#555; margin-top:.2rem; }
-  .status-pill{
-    display:inline-block;
-    padding:.1rem .6rem;
-    border-radius:3px;
-    font-size:.78rem;
-    border:1px solid var(--rule);
-    background:#fff;
-    margin-top:.3rem;
-  }
-  .status-pill-open{
-    background:#fbe4e4;
-    border-color:#d98a8a;
-    color:#7a1f1f;
-    font-weight:bold;
-  }
-  .status-pill-closed{
-    background:#e2f3e2;
-    border-color:#8ec98e;
-    color:#1f5c1f;
-    font-weight:bold;
-  }
-  .attempt-history{
-    margin-top:.4rem;
-    padding:.4rem .6rem;
-    background:#f3f0e8;
-    border:1px solid var(--rule);
-    border-radius:4px;
-  }
-  .attempt-history-title{
-    font-weight:bold;
-    font-size:.82rem;
-    margin-bottom:.2rem;
-  }
-  .attempt-history-line{
-    font-size:.8rem;
-    padding:.1rem 0;
-  }
-  .filters{
-    display:flex;
-    flex-direction:column;
-    gap:.5rem;
-    margin-bottom:1rem;
-  }
-  .filters label{
-    display:flex;
-    flex-direction:column;
-    font-size:.85rem;
-    gap:.2rem;
-  }
+  .viewer .case-style{ font-weight:800; font-size:1rem; }
+  .viewer .case-meta{ font-size:.85rem; color:#4A5B7C; margin-top:.2rem; }
+  .viewer .status-pill{ display:inline-block; padding:.2rem .7rem; font-size:.78rem; margin-top:.5rem; }
+  .viewer .attempt-history{ margin-top:.6rem; background:#F2F5FB; border:0; border-radius:12px; padding:10px 12px; }
+  .viewer .attempt-history-title{ font-weight:800; font-size:.8rem; margin-bottom:.2rem; }
+  .viewer .attempt-history-line{ font-size:.82rem; padding:.3rem 0; border-top:1px solid #DCE4F2; }
+  .viewer .attempt-history-line:first-of-type{ border-top:0; }
+  .viewer .btn.view-return-btn,.viewer .btn.view-invoice-btn{ width:100%; }
+  .viewer h2.section-title{ font-size:1.05rem; font-weight:800; margin:18px 0 10px; color:#0B1F44; }
 </style>
 </head>
-<body>
-  <main class="wrap">
-    <section class="card">
-      <h1 id="pageTitle">Case Status</h1>
-      <p class="hint" id="pageSubtitle">Loading…</p>
+<body class="app-shell viewer">
+  <div class="hero">
+    <div class="hero-row"><div><div class="hero-sub" id="pageSubtitle">Loading…</div><h1 id="pageTitle">Case Status</h1></div></div>
+    <div class="filter-row">
+      <input type="text" id="searchInput" placeholder="Search cases" aria-label="Search (defendant, plaintiff, attorney, or address)">
+      <input type="date" id="dateFilter" aria-label="Logged on this date">
+    </div>
+  </div>
 
-      <div class="filters">
-        <label>Search (defendant, plaintiff, attorney, or address)
-          <input type="text" id="searchInput" placeholder="e.g. Tello, or Delta Queen Dr">
-        </label>
-        <label>Logged on this date
-          <input type="date" id="dateFilter">
-        </label>
-      </div>
+  <main class="view-body">
+    <div id="caseList"></div>
 
-      <div id="caseList"></div>
-    </section>
-
-    <section class="card" id="invoicesSection" hidden>
-      <h1>Invoices</h1>
+    <section id="invoicesSection" hidden>
+      <h2 class="section-title">Invoices</h2>
       <div id="invoicesList"></div>
     </section>
   </main>

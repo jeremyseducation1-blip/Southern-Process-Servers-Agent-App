@@ -1,5 +1,5 @@
 const { getCase, putCase } = require('./lib/caseStore');
-const { todayCentral } = require('./lib/billingDate');
+const { todayCentral, HANDOFF } = require('./lib/billingDate');
 
 // Fixes a mistake on an already-marked return -- wrong date, wrong
 // outcome, a note that needs updating -- without re-touching which
@@ -18,14 +18,24 @@ exports.handler = async (event) => {
 
     const existing = await getCase(id);
     if (!existing) return { statusCode: 404, body: 'No case found with that id.' };
-    if (!existing.returnSent) return { statusCode: 400, body: 'This case has no return on file to edit yet.' };
+    if (!existing.returnSent && !existing.handedOff) return { statusCode: 400, body: 'This case has no return on file to edit yet.' };
 
     existing.returnDate = returnDate;
     existing.returnOutcome = returnOutcome || existing.returnOutcome || 'Served';
     existing.returnNotes = returnNotes || '';
     // Move this return onto TODAY's invoice (without changing its return
     // date) -- for a backlogged return that should have been billed already.
-    if (billThisWeek) existing.completedDate = todayCentral();
+    if (existing.returnOutcome === HANDOFF) {
+      existing.handedOff = true;
+      existing.handedOffDate = returnDate;
+      existing.completedDate = null;
+      existing.returnSent = false;
+      existing.status = 'closed';
+      if (!existing.closedDate) existing.closedDate = new Date().toISOString();
+    } else {
+      if (existing.handedOff) { existing.handedOff = false; existing.completedDate = todayCentral(); existing.returnSent = true; }
+      if (billThisWeek) existing.completedDate = todayCentral();
+    }
 
     // Keep the most recent entry in the returns[] history log in sync too,
     // so anything reading that log (rather than the top-level fields)

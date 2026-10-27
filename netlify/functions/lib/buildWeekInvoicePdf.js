@@ -1,6 +1,7 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { listAllCases } = require('./caseStore');
 const { billingDate } = require('./billingDate');
+const { wrapLines } = require('./pdfText');
 
 // Flat rate, billed ONCE PER CASE NUMBER -- not per defendant. If a case
 // has 2 or 3 defendants and each gets served separately (even across
@@ -151,12 +152,18 @@ async function buildWeekInvoicePdf(weekKey) {
 
   function drawCaseLine(c, feeText, feeIsBold, showOutcome) {
     const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
-    ensureRoom(16 + 14 + 8);
-    page.drawText(style, { x: left, y, size: 12, font: bold });
     const feeFont = feeIsBold ? bold : font;
     const feeWidth = feeFont.widthOfTextAtSize(feeText, 12);
-    page.drawText(feeText, { x: right - feeWidth, y, size: 12, font: feeFont, color: feeIsBold ? rgb(0, 0, 0) : rgb(0.4, 0.4, 0.4) });
-    y -= 16;
+    // Long party names wrap onto extra lines, kept clear of the fee column.
+    const nameLines = wrapLines(style, bold, 12, right - left - feeWidth - 16);
+    ensureRoom(nameLines.length * 14 + 2 + 14 + 8);
+    nameLines.forEach((ln, i) => {
+      page.drawText(ln, { x: left, y, size: 12, font: bold });
+      if (i === 0) {
+        page.drawText(feeText, { x: right - feeWidth, y, size: 12, font: feeFont, color: feeIsBold ? rgb(0, 0, 0) : rgb(0.4, 0.4, 0.4) });
+      }
+      y -= i === nameLines.length - 1 ? 16 : 14;
+    });
     const outcome = c.returnOutcome || 'Served';
     const outcomeSuffix = showOutcome ? `   (${outcome})` : '';
     page.drawText(`Case No. ${c.caseNo || 'N/A'}   Attorney: ${attorneyLastName(c.attorney)}${outcomeSuffix}`, {

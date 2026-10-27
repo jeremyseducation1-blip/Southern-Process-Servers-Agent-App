@@ -1,5 +1,6 @@
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { listAllCases } = require('./lib/caseStore');
+const { wrapLines } = require('./lib/pdfText');
 
 // Same Monday-of-week grouping logic as the front end -- kept in sync
 // deliberately since this has to bucket cases the same way the list view
@@ -76,7 +77,7 @@ exports.handler = async (event) => {
       page.drawText('No cases logged this week.', { x: left, y, size: 11, font });
     }
 
-    const entryHeight = 16 + 14 + 22; // matches the three drawText calls + gap below
+    const entryHeight = 16 + 14 + 22 + 28; // three drawText calls + gap, + room for a wrapped name
 
     casesThisWeek.forEach((c, i) => {
       // Start a fresh page if this entry won't fully fit -- no case gets
@@ -92,8 +93,11 @@ exports.handler = async (event) => {
       // red for still open -- easy to scan the PDF at a glance.
       const statusColor = c.status === 'closed' ? rgb(0.12, 0.45, 0.12) : rgb(0.6, 0.12, 0.12);
 
-      page.drawText(`${i + 1}. ${style}`, { x: left, y, size: 12, font: bold });
-      y -= 16;
+      const nameLines = wrapLines(`${i + 1}. ${style}`, bold, 12, 552 - left);
+      nameLines.forEach((ln, k) => {
+        page.drawText(ln, { x: left, y, size: 12, font: bold });
+        y -= k === nameLines.length - 1 ? 16 : 14;
+      });
       page.drawText(`Case No. ${c.caseNo || 'N/A'}   Attorney: ${c.attorney || ''}${c.caseType ? '   Type: ' + c.caseType : ''}`, { x: left + 14, y, size: 10, font });
       y -= 14;
       page.drawText(`Status: ${statusLabel}${c.returnDate ? '   Returned: ' + c.returnDate : ''}`, {

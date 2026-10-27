@@ -286,3 +286,10 @@ body.app-shell [hidden]{display:none !important;}
   box-shadow:0 4px 12px rgba(11,42,91,.25);
 }
 .tabbar .tab-new.on{box-shadow:0 0 0 3px #1E4FD8,0 4px 12px rgba(11,42,91,.25);}
+
+/* attempt photo: take a photo OR choose one from the library */
+.app-shell .photo-btns{display:flex;gap:10px;}
+.app-shell .photo-btn{
+  flex:1;margin-top:0 !important;display:flex;align-items:center;justify-content:center;
+  text-align:center;cursor:pointer;font-size:.9rem;
+}

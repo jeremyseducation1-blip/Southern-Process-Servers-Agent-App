@@ -1,5 +1,5 @@
 const { getCase, putCase } = require('./lib/caseStore');
-const { todayCentral } = require('./lib/billingDate');
+const { todayCentral, HANDOFF } = require('./lib/billingDate');
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -10,7 +10,7 @@ exports.handler = async (event) => {
     // `id` is the paper's unique row id (from Search Cases, where the
     // fetched case object already carries it) -- case numbers repeat, so
     // they're not enough on their own to identify one specific paper.
-    const { id, returnDate, servedDefendants, returnOutcome } = JSON.parse(event.body || '{}');
+    const { id, returnDate, servedDefendants, returnOutcome, returnNotes } = JSON.parse(event.body || '{}');
     if (!id) return { statusCode: 400, body: 'id is required.' };
 
     const existing = await getCase(id);
@@ -26,12 +26,27 @@ exports.handler = async (event) => {
         coveredNames.includes(d.name) ? { ...d, served: true, returnDate: effectiveReturnDate } : d
       );
     }
+    const handoff = returnOutcome === HANDOFF;
+    if (handoff && Array.isArray(existing.defendants)) {
+      existing.defendants = existing.defendants.map((d) =>
+        coveredNames.includes(d.name) ? { ...d, handedOff: true } : d
+      );
+    }
     existing.returns = Array.isArray(existing.returns) ? existing.returns : [];
-    existing.returns.push({ defendants: coveredNames, date: effectiveReturnDate, pdfPath: null, outcome: returnOutcome || 'Served', note: 'Marked manually, no PDF' });
+    existing.returns.push({ defendants: coveredNames, date: effectiveReturnDate, pdfPath: null, outcome: returnOutcome || 'Served', note: handoff ? 'Given to another agent' : 'Marked manually, no PDF', notes: (returnNotes || '').trim() });
 
-    existing.returnSent = true;
+    if (handoff) {
+      // Not a return: nothing was filed, nothing gets billed.
+      existing.handedOff = true;
+      existing.handedOffDate = effectiveReturnDate;
+      existing.returnSent = false;
+      existing.completedDate = null;
+      existing.returnNotes = (returnNotes || '').trim();
+    } else {
+      existing.returnSent = true;
+      existing.completedDate = todayCentral(); // day entered in the app -- what the invoice week is based on
+    }
     existing.returnDate = effectiveReturnDate;
-    existing.completedDate = todayCentral(); // day entered in the app -- what the invoice week is based on
     existing.returnOutcome = returnOutcome || 'Served';
 
     const allServed =

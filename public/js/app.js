@@ -356,10 +356,14 @@
       formEl.innerHTML = `<h3 style="margin-top:0;">${esc(c.defendant || 'Case')} — attempt ${n}</h3>` + stampBanner + `
         <label>Attempt ${n} date <input type="date" class="attempt-log-date" value="${existingDate}"></label>
         <label>Note (required) <textarea class="attempt-log-note" rows="2" placeholder="What happened on this attempt">${existingNote.replace(/</g, '&lt;')}</textarea></label>
-        <label class="file-drop">
-          <input type="file" class="attempt-log-photo" accept="image/*" capture="environment">
-          <span class="attempt-log-photo-label">Photo of notice (optional evidence)${isEdit ? ' — leave blank to keep the existing photo' : ''}</span>
-        </label>
+        <div class="photo-pick">
+          <div class="hint" style="margin:0 0 .4rem;">Photo of notice (optional evidence)${isEdit ? ' — leave blank to keep the existing photo' : ''}</div>
+          <div class="photo-btns">
+            <label class="btn secondary photo-btn">📷 Take photo<input type="file" class="attempt-log-photo" accept="image/*" capture="environment" hidden></label>
+            <label class="btn secondary photo-btn">🖼️ Choose from photos<input type="file" class="attempt-log-photo-lib" accept="image/*" hidden></label>
+          </div>
+          <p class="hint attempt-log-photo-label" style="margin:.4rem 0 0;"></p>
+        </div>
         <div class="sig-actions">
           <button type="button" class="btn primary attempt-log-save-btn">${isEdit ? `Save changes to attempt ${n}` : `Save attempt ${n}`}</button>
           <button type="button" class="btn secondary attempt-log-cancel-btn">Cancel</button>
@@ -371,6 +375,18 @@
         // A just-stamped attempt stays recorded -- refresh so it shows.
         if (justRecorded && typeof onSaved === 'function') onSaved(null);
       });
+      // Camera OR photo library -- picking one clears the other.
+      (function wirePhotoPickers() {
+        const cam = formEl.querySelector('.attempt-log-photo');
+        const lib = formEl.querySelector('.attempt-log-photo-lib');
+        const label = formEl.querySelector('.attempt-log-photo-label');
+        const changed = (picked, other) => () => {
+          if (picked.files[0]) { other.value = ''; label.textContent = '✓ ' + (picked.files[0].name || 'Photo selected'); }
+          else label.textContent = '';
+        };
+        cam.addEventListener('change', changed(cam, lib));
+        lib.addEventListener('change', changed(lib, cam));
+      })();
       setTimeout(() => { const t = formEl.querySelector('.attempt-log-note'); if (t) t.focus(); }, 50);
 
       formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
@@ -421,11 +437,12 @@
           }
         };
 
-        const file = photoInput.files[0];
+        const file = photoInput.files[0] || (formEl.querySelector('.attempt-log-photo-lib') || {}).files?.[0];
         if (file) {
-          const reader = new FileReader();
-          reader.onload = () => finishSave(reader.result);
-          reader.readAsDataURL(file);
+          imageFileToDataUrl(file).then(finishSave).catch(() => {
+            statusEl.textContent = 'Could not read that photo — try a different one.';
+            statusEl.className = 'status err';
+          });
         } else {
           // Editing without picking a new photo keeps whatever photo (or
           // lack of one) was already on file -- passing null here just
@@ -434,6 +451,33 @@
           finishSave(null);
         }
       });
+  }
+
+  // Photos from the library (or camera) can be many MB; the server request
+  // limit is ~6 MB. Shrink to at most 1600px on the long side as JPEG, which
+  // is plenty to read a notice. Falls back to the original bytes if the
+  // browser can't decode it (then the server limit applies as before).
+  function imageFileToDataUrl(file) {
+    const raw = () => new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(r.result);
+      r.onerror = () => reject(r.error);
+      r.readAsDataURL(file);
+    });
+    if (!window.createImageBitmap) return raw();
+    return createImageBitmap(file)
+      .then((bmp) => {
+        const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(bmp.width * scale);
+        cv.height = Math.round(bmp.height * scale);
+        const ctx = cv.getContext('2d');
+        if (!ctx) return raw();
+        ctx.drawImage(bmp, 0, 0, cv.width, cv.height);
+        const out = cv.toDataURL('image/jpeg', 0.82);
+        return /^data:image\/jpeg/.test(out) ? out : raw();
+      })
+      .catch(() => raw());
   }
 
   // ---------- Route ----------
@@ -803,7 +847,8 @@
         const markBtn =
           c.status !== 'closed'
             ? `<button type="button" class="btn primary send-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Upload return &amp; send to Kevin</button>` +
-              `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}" style="margin-top:.4rem;">Mark returned (no email — already handled outside the app)</button>`
+              `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}" style="margin-top:.4rem;">Mark returned (no email — already handled outside the app)</button>` +
+              `<button type="button" class="btn secondary handoff-btn" data-id="${c.id}" style="margin-top:.4rem;">Given to another agent (off my inventory, not billed)</button>`
             : '';
         const viewReturnBtn = c.returnPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="return" style="margin-top:.4rem;">View return PDF</button>`
@@ -811,7 +856,7 @@
         // Fix a mistake on an already-marked return -- wrong date, wrong
         // outcome, a note that needs updating -- without re-touching
         // defendant-served status or reopening/reclosing the case.
-        const editReturnBtn = c.returnSent
+        const editReturnBtn = (c.returnSent || c.handedOff)
           ? `<button type="button" class="btn secondary edit-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit return</button>`
           : '';
         const viewAffidavitBtn = c.affidavitPdfPath
@@ -867,7 +912,7 @@
               c.defendants
                 .map(
                   (d) =>
-                    `<div class="defendant-line">${d.served ? '✓' : '○'} ${d.name}${d.served && d.returnDate ? ' — returned ' + d.returnDate : d.served ? ' — returned' : ' — still open'}</div>`
+                    `<div class="defendant-line">${d.handedOff ? '➜' : d.served ? '✓' : '○'} ${d.name}${d.handedOff ? ' — given to another agent' : d.served && d.returnDate ? ' — returned ' + d.returnDate : d.served ? ' — returned' : ' — still open'}</div>`
                 )
                 .join('') +
               `</div>`
@@ -1065,6 +1110,7 @@
               <option value="Served" ${outcome === 'Served' ? 'selected' : ''}>Served</option>
               <option value="Return Not Found" ${outcome === 'Return Not Found' ? 'selected' : ''}>Return Not Found</option>
               <option value="Return Requested per Plaintiff" ${outcome === 'Return Requested per Plaintiff' ? 'selected' : ''}>Return Requested per Plaintiff</option>
+              <option value="Given to another agent" ${outcome === 'Given to another agent' ? 'selected' : ''}>Given to another agent (not billed)</option>
             </select>
           </label>
           <label>Return notes <textarea class="edit-return-notes" rows="2">${notes}</textarea></label>
@@ -1428,6 +1474,49 @@
           reader.readAsDataURL(file);
         });
         picker.click();
+      });
+    });
+
+    // Handed to another agent: no longer this agent's paper. Closes it off
+    // the inventory and keeps it off the invoice. Nothing is emailed.
+    caseSearchResults.querySelectorAll('.handoff-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.id;
+        const c = cases.find((x) => x.id === id);
+        const outstanding = (c?.defendants || []).filter((d) => !d.served && !d.handedOff).map((d) => d.name);
+        let servedDefendants = null;
+        if (outstanding.length > 1) {
+          const typed = prompt(
+            `Which defendant(s) went to the other agent?\n${outstanding.join(', ')}\n\nComma-separated, or leave blank for all of them.`
+          );
+          if (typed === null) return;
+          servedDefendants = typed.trim() ? typed.split(',').map((s) => s.trim()).filter(Boolean) : outstanding;
+        }
+        const who = prompt('Which agent has it now? (optional)', '');
+        if (who === null) return;
+        if (!confirm(`Take ${c?.caseNo || 'this case'} off your inventory? It will NOT be billed on any invoice.`)) return;
+        btn.disabled = true;
+        btn.textContent = 'Updating…';
+        try {
+          const res = await fetch('/.netlify/functions/mark-returned', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id,
+              returnDate: new Date().toLocaleDateString('en-CA'),
+              servedDefendants,
+              returnOutcome: 'Given to another agent',
+              returnNotes: who.trim() ? 'Given to ' + who.trim() : ''
+            })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          allCasesCache = null;
+          caseSearchInput.dispatchEvent(new Event('input'));
+        } catch (err) {
+          alert('Failed — try again. (' + err.message + ')');
+          btn.disabled = false;
+          btn.textContent = 'Given to another agent (off my inventory, not billed)';
+        }
       });
     });
 
@@ -2491,7 +2580,7 @@
   }
 
   // ---------- New case: three short steps ----------
-  const INTAKE_STEP_TITLES = ['the basics', 'who and what court', 'notes and phone numbers'];
+  const INTAKE_STEP_TITLES = ['case, plaintiff and defendant', 'court details', 'notes and phone numbers'];
   function setIntakeStep(n) {
     document.querySelectorAll('#intakeCard [data-step]').forEach((l) => { l.hidden = Number(l.dataset.step) !== n; });
     document.querySelectorAll('#view-new .progress span').forEach((sp, i) => sp.classList.toggle('on', i < n));

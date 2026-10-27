@@ -13,8 +13,13 @@ function todayCentral() {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
 }
 
+// A paper handed to another agent is no longer ours: never billed, never
+// listed on an invoice.
+const HANDOFF = 'Given to another agent';
+
 function billingDate(c) {
+  if (c.returnOutcome === HANDOFF || c.handedOff) return null;
   return c.completedDate || c.returnDate || null;
 }
 
-module.exports = { todayCentral, billingDate };
+module.exports = { todayCentral, billingDate, HANDOFF };

@@ -508,3 +508,43 @@ typed value, and again at "Log intake" if the field was never left.
 - New **Navigate to next stop** button: directions to the first stop in your order that has no attempt logged today. Always works, since it's a single destination.
 - **Log attempt (I'm here)** on a Route row now opens the same note form as Search Cases (date, required note, optional photo) attached to the attempt it just stamped. Replaces the old pop-up dialogs, which phones can silently suppress. The form code is shared (`buildAttemptForm`).
 - Your route order is remembered on the phone, so it survives going out to Maps and coming back.
+
+## Attempt notes are now a pop-up (Oct 20)
+Tapping **Log attempt (I'm here)** (Search Cases or Route) stamps the visit and immediately opens a pop-up over the page with the date, a REQUIRED note box (cursor already in it) and an optional photo. Before, the form opened inline underneath the case's button list, which on a phone could be below the visible screen. Cancel keeps the stamped attempt; the note can be added later with Edit.
+
+## Fix: Weekly Log "Invalid Date" (Oct 21)
+A case's received date (`intakeDate`) is a full timestamp (e.g. `2026-10-21T15:30:12.345Z`), but the Oct 7 week-grouping fix assumed a plain `YYYY-MM-DD`, so the Weekly Log and the Weekly Log PDF failed with "Invalid Date". `mondayOfWeek` now accepts either form (timestamps are converted to the Central calendar day, so a Sunday-evening case lands in the week it was actually received), and unreadable dates are skipped instead of breaking the whole list. The inventory's week grouping uses the same Central-day rule. Weekly Invoice was not affected (it uses plain dates).
+
+## Schedule (meetings with defendants)
+
+- New **Schedule** card at the top of the app (starts open). Shows overdue meetings (red), Today, Tomorrow, then later dates, each with address, case no., plaintiff/attorney, case notes, tap-to-call phone numbers, and a Navigate button.
+- On any open case in Search Cases tap **📅 Schedule meeting** (date, time defaulting to 10:00, optional note). Nothing is re-typed -- it is saved on the case.
+- Buttons per meeting: Done, Reschedule, Cancel meeting. Closed cases drop off the schedule. Case rows show a "📅 Meeting:" line.
+- Backend: `netlify/functions/appointment.js` (add / update / done / cancel / delete). Times are Central wall-clock.
+- **Add to calendar** button on each meeting: `netlify/functions/meeting-ics.js` returns a .ics file (30 min, address, case info, 1-hour alert) that the phone adds to its own calendar.
+
+## Redesign: tabbed app, blue + yellow (Oct 23)
+
+- Bottom tab bar: **Today · Cases · + New · Route · Paperwork**.
+- **Today**: counts (open / meetings today / need attention), Next Stop card with a big Log attempt button (uses your saved route order), meetings, needs-attention list.
+- **Cases**: compact rows (priority dot, address, attempt bars). Search matches every case; chips: Open / Priority / Meetings / Closed. Tap a row for the **case page**: Log attempt pinned at the top; tabs Info / Attempts / Return / Papers holding every existing button (Edit, Schedule meeting, Remove attempt, photos, Upload return, Mark returned, Edit return, View PDFs, Affidavit, etc.).
+- **+ New**: the intake form split into 3 steps.
+- **Route**: unchanged features (auto-loads when opened). **Paperwork**: Logs, Weekly Invoice, Inventory, Share Links, Affidavit (tap a row to expand).
+- Files: `public/index.html` (restructured), `public/css/app-ui.css` (new, scoped to the app so view.html is unchanged), `public/js/app.js` (new shell section + compact rows). The pre-redesign version is the previous zip (`sps-app-scheduler2.zip`).
+- Script/CSS links carry `?v=20261023` so phones fetch the new files.
+
+## Long names in PDFs (Oct 23)
+
+- Weekly Invoice, Inventory and Weekly Log PDFs now wrap long plaintiff/defendant names onto extra lines instead of running into the $ column or off the page. Shared helper: `netlify/functions/lib/pdfText.js`.
+
+## Shared-link page restyled (Oct 24)
+
+- `public/view.html` (what Kevin / firms see from a share link) now uses the same blue + yellow look as the app (loads `css/app-ui.css`). Same data and same token check -- layout only: header with search and date filter, case cards, invoices section (Kevin's ALL link only).
+
+## Photos from the library + intake grouping (Oct 26)
+
+- Attempt form: two buttons, **Take photo** (camera) and **Choose from photos** (phone library). Photos are shrunk to max 1600px JPEG before upload so big library photos fit the server's size limit.
+- New case step 1 now holds the case no., plaintiff, attorney, defendant(s), service address, court date and issue date together. Step 2: court details (court type, county, state, document type, alias). Step 3: notes and phone numbers.
+
+## Given to another agent
+A case's **Return** tab has a "Given to another agent" button (also an option under *Edit return*). It closes the paper off your inventory, records who has it (optional), emails nothing, and the paper is **never billed or listed** on the weekly invoice (`billingDate()` returns null for it). Multi-defendant cases: pick which defendants moved; the rest stay open.

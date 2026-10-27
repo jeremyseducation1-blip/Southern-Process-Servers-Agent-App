@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0B2A5B">
+<title>Southern Process Servers</title>
+<link rel="stylesheet" href="/css/style.css?v=20261027">
+<link rel="stylesheet" href="/css/app-ui.css?v=20261027">
+</head>
+<body class="app-shell">
+
+  <!-- ============ TODAY (home) ============ -->
+  <div class="view" id="view-today">
+    <div class="hero">
+      <div class="hero-row">
+        <div><div class="hero-sub" id="todayDate"></div><h1>Today</h1></div>
+        <span class="pill-yellow" id="todayAttempts"></span>
+      </div>
+      <div class="stats">
+        <div class="stat"><b id="statOpen">–</b><span>Open cases</span></div>
+        <div class="stat"><b id="statMeet">–</b><span>Meetings today</span></div>
+        <div class="stat attn"><b id="statAttn">–</b><span>Need attention</span></div>
+      </div>
+    </div>
+    <div class="view-body">
+      <div id="nextStopCard" class="next-card"></div>
+
+      <!-- Schedule -- meetings set up with defendants (add one from any
+           case page with "Schedule meeting"). -->
+      <section class="card" id="scheduleCard">
+      <h2>Meetings</h2>
+      <div id="scheduleBanner"></div>
+      <div id="scheduleList"><p class="hint">Loading…</p></div>
+      <button type="button" class="btn secondary" id="refreshScheduleBtn">Refresh</button>
+    </section>
+
+      <section class="card" id="attentionCard">
+        <h2>Needs attention</h2>
+        <div id="attentionList"><p class="hint">Loading…</p></div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============ CASES (search + list) ============ -->
+  <div class="view" id="view-cases" hidden>
+    <div class="hero">
+      <div class="hero-row"><div><h1>Cases</h1></div></div>
+      <input type="text" id="caseSearchInput" placeholder="Name, case no., or address" aria-label="Search cases">
+      <div class="chips" id="caseChips">
+        <button type="button" class="chip on" data-filter="open">Open</button>
+        <button type="button" class="chip" data-filter="priority">Priority</button>
+        <button type="button" class="chip" data-filter="meetings">Meetings</button>
+        <button type="button" class="chip" data-filter="closed">Closed</button>
+      </div>
+    </div>
+    <div class="view-body">
+      <p class="hint" id="casesHint">Search matches everything you've ever logged, open or closed.</p>
+      <div id="caseSearchResults"></div>
+    </div>
+  </div>
+
+  <!-- ============ NEW CASE (intake, 3 steps) ============ -->
+  <div class="view" id="view-new" hidden>
+    <div class="hero">
+      <div class="hero-row"><div><div class="hero-sub" id="newStepLabel">Step 1 of 3: the basics</div><h1>New case</h1></div></div>
+      <div class="progress"><span class="on"></span><span></span><span></span></div>
+    </div>
+    <div class="view-body">
+      <section class="card" id="intakeCard">
+        <div class="grid-2">
+          <label data-step="1" >Case No.
+            <input type="text" id="caseNo" placeholder="26GC8832">
+          </label>
+          <label data-step="1" >Plaintiff
+            <input type="text" id="plaintiff" placeholder="River Trace Estates HOA">
+          </label>
+          <label data-step="1" >Attorney of record
+            <input type="text" id="attorney" placeholder="Leave blank if you don't know the attorney">
+          </label>
+          <label data-step="1" >Defendant
+            <input type="text" id="defendant" placeholder="Edilia Tello">
+          </label>
+          <label data-step="1" >Additional defendants (comma-separated, if any)
+            <input type="text" id="extraDefendants" placeholder="e.g. John Tello">
+          </label>
+          <label data-step="1" >Service address
+            <input type="text" id="serviceAddress" placeholder="3013 Delta Queen Dr, Nashville, TN 37214">
+          </label>
+          <label data-step="1" >Court date (if the paper has one)
+            <input type="date" id="courtDate">
+          </label>
+          <label data-step="1" >Issued on (date printed on the summons/warrant — starts the 60/90-day expiration)
+            <input type="date" id="issueDate">
+          </label>
+          <label data-step="2" >Court type
+            <input type="text" id="courtType" placeholder="General Sessions">
+          </label>
+          <label data-step="2" >County
+            <input type="text" id="county" placeholder="Davidson">
+          </label>
+          <label data-step="2" >State
+            <input type="text" id="state" value="Tennessee">
+          </label>
+          <label data-step="2" >Document type
+            <select id="caseType">
+              <option value="">Select type</option>
+              <option value="Detainer">Detainer</option>
+              <option value="Letter">Letter</option>
+              <option value="Summons">Summons</option>
+              <option value="Civil Warrant">Civil Warrant</option>
+              <option value="Subpoena">Subpoena</option>
+            </select>
+          </label>
+          <label data-step="2" class="check-row">
+            <input type="checkbox" id="isAlias">
+            This is an alias summons
+          </label>
+          <label data-step="3" >Special notes (things Kevin or the firm told you — anything worth not forgetting)
+            <textarea id="caseNotes" rows="3" placeholder="e.g. Kevin said skip weekends on this one, or firm wants photos of the mailbox too"></textarea>
+          </label>
+          <label data-step="3" >Phone numbers (one per line — from the firm's list, or whoever calls you back after a notice)
+            <textarea id="casePhoneNumbers" rows="2" placeholder="e.g. 615-555-1234 (from firm list)&#10;615-555-5678 (defendant called back 9/20)"></textarea>
+          </label>
+        </div>
+        <div class="step-actions">
+          <button type="button" class="btn secondary" id="stepBackBtn" hidden>Back</button>
+          <button type="button" class="btn primary" id="stepNextBtn">Next</button>
+        </div>
+        <button type="button" class="btn primary" id="sendIntakeBtn" hidden>Log intake</button>
+        <p class="hint" id="intakeHint" hidden>Enter the warrant/summons info as soon as you receive it. Kevin isn't notified at this step.</p>
+        <p class="status" id="intakeStatus"></p>
+      </section>
+    </div>
+  </div>
+
+  <!-- ============ ROUTE ============ -->
+  <div class="view" id="view-route" hidden>
+    <div class="hero"><div class="hero-row"><div><h1>Route</h1><div class="hero-sub">Tap cases in the order you'll drive them</div></div></div></div>
+    <div class="view-body">
+      <section class="card">
+      <h2>Route</h2>
+      <p class="hint">Load your open cases, tap them in the order you'll drive, then open the whole route in Google Maps. At each stop tap "Log attempt (I'm here)" — it records the attempt with the time and your location whether or not the car is turned off.</p>
+      <button type="button" class="btn secondary" id="loadRouteBtn">Load open cases</button>
+      <div id="routeActions" hidden>
+        <button type="button" class="btn primary" id="openRouteBtn">Open route in Maps</button>
+        <button type="button" class="btn secondary" id="nextStopBtn">Navigate to next stop</button>
+        <button type="button" class="btn secondary" id="clearRouteBtn">Clear order</button>
+        <p class="hint" id="routeCount"></p>
+      </div>
+      <div id="routeList"></div>
+    </section>
+    </div>
+  </div>
+
+  <!-- ============ PAPERWORK ============ -->
+  <div class="view" id="view-paperwork" hidden>
+    <div class="hero"><div class="hero-row"><div><h1>Paperwork</h1><div class="hero-sub">Logs, invoices, reports, affidavit and sharing</div></div></div></div>
+    <div class="view-body">
+      <section class="card">
+      <h2>Logs</h2>
+
+      <h3>Weekly Log</h3>
+      <p class="hint">Every case you've logged, grouped by the week it was received.</p>
+      <button type="button" class="btn secondary" id="loadLogBtn">Load log</button>
+      <div id="weeklyLog"></div>
+    </section>
+      <section class="card">
+      <h2>Weekly Invoice</h2>
+      <p class="hint">Tap a week to open a PDF of everything actually returned/served that week (regardless of when it was originally received).</p>
+      <button type="button" class="btn secondary" id="loadWeekInvoiceBtn">Load weeks</button>
+      <div id="weekInvoiceList"></div>
+    </section>
+      <section class="card">
+      <h2>Inventory (On Demand)</h2>
+      <p class="hint">Generate a PDF of every case still open, right now -- same list Kevin gets automatically every Sunday, no email required.</p>
+      <button type="button" class="btn secondary" id="generateInventoryBtn">Generate inventory PDF</button>
+    </section>
+      <section class="card">
+      <h2>Share Links</h2>
+      <p class="hint">Create a view-only link for Kevin (sees every case) or a specific attorney/firm (sees only their own cases). No login required — anyone with the link can view.</p>
+      <label>Scope <input type="text" id="shareScope" placeholder="ALL for Kevin, or e.g. Scott Weiss"></label>
+      <label>Label (optional) <input type="text" id="shareLabel" placeholder="Kevin Williams"></label>
+      <button type="button" class="btn secondary" id="createShareLinkBtn">Create link</button>
+      <p class="status" id="shareLinkStatus"></p>
+      <button type="button" class="btn secondary" id="loadShareLinksBtn">Show existing links</button>
+      <div id="shareLinksList"></div>
+    </section>
+      <section class="card" id="returnCard" hidden>
+      <h2>Return</h2>
+      <p class="hint">Scan the served/returned paper in Genius Scan, export it as a PDF, then upload that PDF here. It attaches to this case right away — no email gets sent to Kevin from this step. <strong>Exception:</strong> for an alias case with Scott Weiss as attorney, this return still gets bundled and sent automatically when you send the affidavit below.</p>
+
+      <div id="returnDefendantsPicker" hidden>
+        <p class="hint">We track papers, not just cases — this case has more than one defendant. Check off which one(s) this specific return covers. Only those get marked returned; the others stay open.</p>
+        <div id="returnDefendantsList"></div>
+      </div>
+
+      <label>Return outcome
+        <select id="returnOutcome">
+          <option value="Served">Served</option>
+          <option value="Return Not Found">Return Not Found</option>
+          <option value="Return Requested per Plaintiff">Return Requested per Plaintiff</option>
+        </select>
+      </label>
+
+      <label>Return notes (anything special about this specific return)
+        <textarea id="returnNotes" rows="2" placeholder="e.g. Left with roommate, or gate code needed for next time"></textarea>
+      </label>
+
+      <label class="file-drop" id="returnDrop">
+        <input type="file" id="returnPdfInput" accept="application/pdf">
+        <span id="returnPdfLabel">Tap to upload the Genius Scan PDF</span>
+      </label>
+
+      <div id="returnPreviewStage" hidden>
+        <iframe id="returnPreviewFrame" title="Return PDF preview" style="width:100%;height:70vh;border:1px solid var(--rule);border-radius:4px;"></iframe>
+      </div>
+      <p class="status" id="returnStatus"></p>
+    </section>
+      <section class="card" id="attemptsCard">
+      <h2>Affidavit</h2>
+      <p class="hint">Log attempts from Search Cases (below) against the case they're for. Once a case has all 3 attempts (date + note each, no future dates), come back here with that same case number + defendant typed in the Case section above, and the status dropdown unlocks automatically.</p>
+
+      <button type="button" class="btn secondary" id="checkAttemptsBtn">Check attempts for this case</button>
+      <p class="hint" id="attemptsCheckStatus"></p>
+
+      <label class="check-row">
+        <input type="checkbox" id="fewerAttemptsOverride">
+        I already have enough information to know service won't happen — proceed with fewer than 3 attempts
+      </label>
+
+      <label>Status
+        <select id="statusSelect" disabled>
+          <option value="">Check attempts first</option>
+          <option value="No response">No response</option>
+          <option value="Evading service">Evading service</option>
+          <option value="Vacant home">Vacant home</option>
+          <option value="Bad address">Bad address</option>
+        </select>
+      </label>
+
+      <div id="signatureBlock" hidden>
+        <h3>Signature</h3>
+        <p class="hint">Your saved signature and stamp will be applied automatically. Preview the affidavit first, then send it — with the return, if one's been uploaded — to Kevin.</p>
+        <div class="sig-preview">
+          <img id="savedSigPreview" alt="Saved signature">
+          <span id="noSigNote" hidden>No saved signature yet — <a href="#" id="goSetupSig">set one up</a>.</span>
+        </div>
+      </div>
+
+      <!-- Signature & stamp setup, merged into Affidavit -- one-time
+           per device, not its own top-level section. -->
+      <div id="sigSetupCard">
+        <h3>Server signature &amp; stamp</h3>
+        <p class="hint">Sign once — it's saved on this device and reused on every affidavit.</p>
+        <canvas id="sigPad" width="600" height="180"></canvas>
+        <div class="sig-actions">
+          <button type="button" class="btn secondary" id="clearSig">Clear</button>
+          <button type="button" class="btn primary" id="saveSig">Save signature</button>
+        </div>
+        <div class="grid-2">
+          <label>Server name <input type="text" id="serverName" placeholder="Jeremy Williams"></label>
+          <label>Server phone <input type="text" id="serverPhone" placeholder="615-479-1334"></label>
+          <label>PO Box <input type="text" id="serverBox" placeholder="PO Box 292997"></label>
+          <label>City/State/ZIP <input type="text" id="serverCityState" placeholder="Nashville, TN 37229"></label>
+        </div>
+      </div>
+
+      <button type="button" class="btn secondary" id="previewAffidavitBtn" disabled>Preview affidavit</button>
+
+      <div id="affidavitPreviewStage" hidden>
+        <iframe id="affidavitPreviewFrame" title="Affidavit preview" style="width:100%;height:70vh;border:1px solid var(--rule);border-radius:4px;"></iframe>
+      </div>
+
+      <button type="button" class="btn primary" id="completeAffidavitBtn" disabled>Send affidavit to Kevin</button>
+      <p class="status" id="affidavitStatus"></p>
+    </section>
+    </div>
+  </div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Main">
+    <button type="button" class="tab" data-view="today"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z"/></svg><span>Today</span></button>
+    <button type="button" class="tab" data-view="cases"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg><span>Cases</span></button>
+    <button type="button" class="tab-new" data-view="new" aria-label="New case">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button type="button" class="tab" data-view="route"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h7a3 3 0 0 0 0-6H9a3 3 0 0 1 0-6h7"/></svg><span>Route</span></button>
+    <button type="button" class="tab" data-view="paperwork"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg><span>Paperwork</span></button>
+  </nav>
+
+  <script src="/js/signature-pad.js?v=20261027"></script>
+  <script src="/js/priority.js?v=20261027"></script>
+  <script src="/js/app.js?v=20261027"></script>
+</body>
+</html>

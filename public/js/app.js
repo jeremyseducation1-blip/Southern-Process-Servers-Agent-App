@@ -610,12 +610,207 @@
       alert('Add at least one case to the route first.');
       return;
     }
-    if (routeOrder.length > 10) {
-      alert('Google Maps only takes 10 stops at a time. Remove a few and open the rest as a second route.');
+    const home = ($('#homeAddress').value || '').trim();
+    if (!home) {
+      alert('Save your home address first — every route ends back home so the miles add up.');
+      $('#homeAddress').focus();
       return;
     }
-    window.open(buildMapsUrl(routeAddresses().map((c) => c.serviceAddress)), '_blank');
+    if (routeOrder.length > 9) {
+      alert('Google Maps only takes 10 stops at a time (the last one is home). Remove a few and open the rest as a second route.');
+      return;
+    }
+    window.open(buildMapsUrl([...routeAddresses().map((c) => c.serviceAddress), home]), '_blank');
   });
+
+
+  // ---------- Mileage: home -> stops -> home, saved for tax time ----------
+  const homeInput = $('#homeAddress');
+  const homeStatus = $('#homeStatus');
+  const milesResult = $('#milesResult');
+  const milesStatus = $('#milesStatus');
+  let lastRouteStops = [];
+
+  async function loadMileage() {
+    const res = await fetch('/.netlify/functions/mileage');
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+  async function postMileage(body) {
+    const res = await fetch('/.netlify/functions/mileage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json();
+  }
+
+  // Home address is kept on the server (so it follows you between devices);
+  // the local copy just fills the box instantly.
+  try { homeInput.value = localStorage.getItem('sps_home') || ''; } catch (_) { /* ignore */ }
+  loadMileage().then((m) => {
+    if (m.home) {
+      homeInput.value = m.home;
+      try { localStorage.setItem('sps_home', m.home); } catch (_) { /* ignore */ }
+    }
+  }).catch(() => { /* offline or first run: the local copy stands */ });
+
+  $('#saveHomeBtn').addEventListener('click', async () => {
+    const home = homeInput.value.trim();
+    homeStatus.textContent = 'Saving…';
+    homeStatus.className = 'status';
+    try {
+      await postMileage({ action: 'home', home });
+      try { localStorage.setItem('sps_home', home); } catch (_) { /* ignore */ }
+      homeStatus.textContent = home ? 'Home address saved.' : 'Home address cleared.';
+      homeStatus.className = 'status ok';
+    } catch (err) {
+      homeStatus.textContent = 'Could not save — try again. (' + err.message + ')';
+      homeStatus.className = 'status err';
+    }
+  });
+
+  // Geocode (OpenStreetMap Nominatim) + driving distance (OSRM), straight
+  // from the phone: free, no key. Nominatim asks for at most 1 request a
+  // second, so lookups are spaced out, and results are remembered.
+  const sleepMs = (ms) => new Promise((r) => setTimeout(r, ms));
+  function geoCache() { try { return JSON.parse(localStorage.getItem('sps_geo') || '{}'); } catch (_) { return {}; } }
+  function geoSave(c) { try { localStorage.setItem('sps_geo', JSON.stringify(c)); } catch (_) { /* ignore */ } }
+  let lastGeoAt = 0;
+  async function geocodeOne(q) {
+    const wait = lastGeoAt + 1100 - Date.now();
+    if (wait > 0) await sleepMs(wait);
+    lastGeoAt = Date.now();
+    const res = await fetch('https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=us&q=' + encodeURIComponent(q));
+    if (!res.ok) throw new Error('address lookup failed (' + res.status + ')');
+    const list = await res.json();
+    return list && list[0] ? { lat: Number(list[0].lat), lon: Number(list[0].lon) } : null;
+  }
+  async function geocode(addr) {
+    const cache = geoCache();
+    const key = addr.trim().toLowerCase();
+    if (cache[key]) return cache[key];
+    let hit = await geocodeOne(addr);
+    if (!hit) {
+      // Retry without unit/apt/lot details, which often confuse the lookup.
+      const simpler = addr.replace(/\s*(,|\s)\s*(apt|apartment|unit|lot|ste|suite|bldg|#)\s*\.?\s*[\w-]+/i, '');
+      if (simpler !== addr) hit = await geocodeOne(simpler);
+    }
+    if (!hit) throw new Error('Could not find this address on the map: ' + addr);
+    cache[key] = hit;
+    geoSave(cache);
+    return hit;
+  }
+  async function routeMiles(addresses) {
+    const pts = [];
+    for (const a of addresses) pts.push(await geocode(a));
+    const coords = pts.map((p) => p.lon + ',' + p.lat).join(';');
+    const res = await fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=false');
+    if (!res.ok) throw new Error('route lookup failed (' + res.status + ')');
+    const data = await res.json();
+    if (data.code !== 'Ok' || !data.routes || !data.routes[0]) throw new Error('No driving route found between these stops.');
+    const legs = data.routes[0].legs.map((l) => l.distance / 1609.344);
+    return { total: legs.reduce((s, m) => s + m, 0), legs };
+  }
+
+  $('#calcMilesBtn').addEventListener('click', async () => {
+    const home = homeInput.value.trim();
+    const ordered = routeAddresses();
+    milesStatus.textContent = '';
+    if (!home) { milesStatus.textContent = 'Save your home address first.'; milesStatus.className = 'status err'; return; }
+    if (!ordered.length) { milesStatus.textContent = 'Add at least one case to the route first.'; milesStatus.className = 'status err'; return; }
+    const btn = $('#calcMilesBtn');
+    btn.disabled = true;
+    milesStatus.textContent = 'Calculating… (about a second per stop)';
+    milesStatus.className = 'status';
+    milesResult.innerHTML = '';
+    $('#saveTripBox').hidden = true;
+    try {
+      const stops = [home, ...ordered.map((c) => c.serviceAddress), home]; // always back home at the end
+      const { total, legs } = await routeMiles(stops);
+      lastRouteStops = ordered.map((c) => c.serviceAddress);
+      milesResult.innerHTML =
+        `<p><strong>${total.toFixed(1)} miles</strong> round trip</p>` +
+        legs.map((m, i) => `<div class="defendant-line">${esc(i === 0 ? 'Home' : stops[i])} → ${esc(i === legs.length - 1 ? 'Home' : stops[i + 1])}: ${m.toFixed(1)} mi</div>`).join('');
+      $('#tripMiles').value = total.toFixed(1);
+      $('#tripMiles').dataset.estimate = total.toFixed(1);
+      $('#tripDate').value = new Date().toLocaleDateString('en-CA');
+      $('#saveTripBox').hidden = false;
+      milesStatus.textContent = '';
+    } catch (err) {
+      milesStatus.textContent = err.message + ' You can still type your miles by hand below.';
+      milesStatus.className = 'status err';
+      lastRouteStops = ordered.map((c) => c.serviceAddress);
+      $('#tripDate').value = new Date().toLocaleDateString('en-CA');
+      $('#saveTripBox').hidden = false;
+    }
+    btn.disabled = false;
+  });
+
+  $('#saveTripBtn').addEventListener('click', async () => {
+    const miles = Number($('#tripMiles').value);
+    const date = $('#tripDate').value;
+    if (!(miles > 0)) { milesStatus.textContent = 'Enter the miles driven.'; milesStatus.className = 'status err'; return; }
+    if (!date) { milesStatus.textContent = 'Pick the date.'; milesStatus.className = 'status err'; return; }
+    const btn = $('#saveTripBtn');
+    btn.disabled = true;
+    milesStatus.textContent = 'Saving…';
+    milesStatus.className = 'status';
+    try {
+      const est = $('#tripMiles').dataset.estimate;
+      await postMileage({
+        action: 'save', date, miles, stops: lastRouteStops, note: $('#tripNote').value.trim(),
+        estimated: !!est && Number(est).toFixed(1) === miles.toFixed(1)
+      });
+      milesStatus.textContent = `Saved ${miles.toFixed(1)} miles for ${date}.`;
+      milesStatus.className = 'status ok';
+      $('#saveTripBox').hidden = true;
+      $('#tripNote').value = '';
+    } catch (err) {
+      milesStatus.textContent = 'Could not save — try again. (' + err.message + ')';
+      milesStatus.className = 'status err';
+    }
+    btn.disabled = false;
+  });
+
+  // Paperwork -> Mileage: totals by year, trip list, CSV for the accountant.
+  const mileageYear = $('#mileageYear');
+  (function fillYears() {
+    const y = new Date().getFullYear();
+    mileageYear.innerHTML = [y, y - 1, y - 2].map((v) => `<option value="${v}">${v}</option>`).join('');
+  })();
+  async function renderMileageList() {
+    const out = $('#mileageList');
+    out.innerHTML = '<p class="hint">Loading…</p>';
+    try {
+      const { trips } = await loadMileage();
+      const year = mileageYear.value;
+      const rows = trips.filter((t) => t.date.startsWith(year)).sort((a, b) => b.date.localeCompare(a.date));
+      const total = rows.reduce((s, t) => s + t.miles, 0);
+      if (!rows.length) { out.innerHTML = `<p class="hint">No trips saved for ${esc(year)} yet.</p>`; return; }
+      out.innerHTML =
+        `<p><strong>${total.toFixed(1)} miles</strong> in ${esc(year)} (${rows.length} trip${rows.length === 1 ? '' : 's'})</p>` +
+        `<a class="btn secondary" style="display:inline-block;text-decoration:none;" href="/.netlify/functions/mileage-csv?year=${encodeURIComponent(year)}">Download CSV for taxes</a>` +
+        rows.map((t) =>
+          `<div class="case-row"><div class="case-style">${esc(t.date)} — ${t.miles.toFixed(1)} mi${t.estimated ? '' : ' (adjusted)'}</div>` +
+          `<div class="case-meta">${(t.stops || []).length} stop${(t.stops || []).length === 1 ? '' : 's'}${t.note ? ' — ' + esc(t.note) : ''}</div>` +
+          `<a href="#" class="delete-trip-link" data-id="${esc(t.id)}">Delete</a></div>`
+        ).join('');
+      out.querySelectorAll('.delete-trip-link').forEach((a) => {
+        a.addEventListener('click', async (e) => {
+          e.preventDefault();
+          if (!confirm('Delete this trip from the mileage log?')) return;
+          try { await postMileage({ action: 'delete', id: a.dataset.id }); renderMileageList(); }
+          catch (err) { alert('Could not delete — try again. (' + err.message + ')'); }
+        });
+      });
+    } catch (err) {
+      out.innerHTML = `<p class="status err">Failed to load. (${esc(err.message)})</p>`;
+    }
+  }
+  $('#loadMileageBtn').addEventListener('click', renderMileageList);
+  mileageYear.addEventListener('change', renderMileageList);
 
   // Backup that always works: directions to ONE stop -- the first stop in
   // your order that has no attempt logged yet. Tap it again after each stop.

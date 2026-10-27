@@ -548,3 +548,6 @@ A case's received date (`intakeDate`) is a full timestamp (e.g. `2026-10-21T15:3
 
 ## Given to another agent
 A case's **Return** tab has a "Given to another agent" button (also an option under *Edit return*). It closes the paper off your inventory, records who has it (optional), emails nothing, and the paper is **never billed or listed** on the weekly invoice (`billingDate()` returns null for it). Multi-defendant cases: pick which defendants moved; the rest stay open.
+
+## Mileage
+Route tab: save a **home address**, build the route, and "Open route in Maps" now always ends back home. **Calculate miles** measures home → stops (in order) → home using free OpenStreetMap services (Nominatim geocoding + OSRM road distance) straight from the phone; the number is editable (e.g. to match the odometer) before **Save trip**. Trips and the home address are stored as one private JSON file in a Supabase Storage bucket `mileage` (auto-created, no SQL). Paperwork → Mileage lists trips by year with totals, delete, and a CSV download (`mileage-csv`) for taxes.

@@ -780,6 +780,8 @@
     const y = new Date().getFullYear();
     mileageYear.innerHTML = [y, y - 1, y - 2].map((v) => `<option value="${v}">${v}</option>`).join('');
   })();
+  // IRS standard business mileage rates, dollars per mile, by tax year.
+  const IRS_RATE = { 2026: 0.725, 2025: 0.70, 2024: 0.67 };
   async function renderMileageList() {
     const out = $('#mileageList');
     out.innerHTML = '<p class="hint">Loading…</p>';
@@ -791,6 +793,9 @@
       if (!rows.length) { out.innerHTML = `<p class="hint">No trips saved for ${esc(year)} yet.</p>`; return; }
       out.innerHTML =
         `<p><strong>${total.toFixed(1)} miles</strong> in ${esc(year)} (${rows.length} trip${rows.length === 1 ? '' : 's'})</p>` +
+        (IRS_RATE[year]
+          ? `<p>Estimated deduction: <strong>$${(total * IRS_RATE[year]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> at the IRS rate of ${(IRS_RATE[year] * 100).toFixed(1).replace(/\.0$/, '')}¢/mile. <span class="hint">An estimate only — check with your tax preparer.</span></p>`
+          : '') +
         `<a class="btn secondary" style="display:inline-block;text-decoration:none;" href="/.netlify/functions/mileage-csv?year=${encodeURIComponent(year)}">Download CSV for taxes</a>` +
         rows.map((t) =>
           `<div class="case-row"><div class="case-style">${esc(t.date)} — ${t.miles.toFixed(1)} mi${t.estimated ? '' : ' (adjusted)'}</div>` +

@@ -891,6 +891,7 @@
                   : '';
                 return (
                   `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}${gps} ` +
+                  (a.photoPath ? `<a href="#" class="view-attempt-photo-link" data-id="${c.id}" data-attempt="${a.n}">📷 View photo</a> · ` : '') +
                   `<a href="#" class="edit-attempt-link" data-id="${c.id}" data-n="${a.n}">Edit</a> · ` +
                   `<a href="#" class="remove-attempt-link" data-id="${c.id}" data-n="${a.n}">Remove</a></div>`
                 );
@@ -1389,22 +1390,45 @@
       });
     });
 
-    caseSearchResults.querySelectorAll('.view-attempt-photo-btn').forEach((btn) => {
-      btn.addEventListener('click', async () => {
+    // Attempt photos open in an in-app viewer (never downloaded or saved to
+    // the phone). Tap anywhere on the dark area or Close to dismiss.
+    async function showAttemptPhoto(id, attempt) {
+      const res = await fetch(`/.netlify/functions/get-attempt-photo?id=${encodeURIComponent(id)}&attempt=${attempt}`);
+      if (!res.ok) throw new Error(await res.text());
+      const { url, timestamp } = await res.json();
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(5,15,40,.94);z-index:2000;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px;gap:10px;';
+      const cap = document.createElement('div');
+      cap.style.cssText = 'color:#fff;font:600 .9rem system-ui,sans-serif;text-align:center;';
+      cap.textContent = `Attempt ${attempt} photo` + (timestamp ? ' — ' + new Date(timestamp).toLocaleString('en-US', { timeZone: 'America/Chicago' }) : '');
+      const img = document.createElement('img');
+      img.alt = `Attempt ${attempt} photo`;
+      img.style.cssText = 'max-width:100%;max-height:78vh;object-fit:contain;border-radius:8px;background:#000;-webkit-touch-callout:none;';
+      img.src = url;
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.textContent = 'Close';
+      close.style.cssText = 'background:#FFC72C;color:#0B2A5B;border:0;border-radius:12px;font:800 1rem system-ui,sans-serif;padding:12px 28px;';
+      overlay.append(cap, img, close);
+      overlay.addEventListener('click', (e) => { if (e.target !== img) overlay.remove(); });
+      document.body.appendChild(overlay);
+    }
+
+    caseSearchResults.querySelectorAll('.view-attempt-photo-btn, .view-attempt-photo-link').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.preventDefault();
         const id = btn.dataset.id;
         const attempt = btn.dataset.attempt;
         const original = btn.textContent;
-        btn.disabled = true;
+        if (btn.dataset.busy) return;
+        btn.dataset.busy = '1';
         btn.textContent = 'Opening…';
         try {
-          const res = await fetch(`/.netlify/functions/get-attempt-photo?id=${encodeURIComponent(id)}&attempt=${attempt}`);
-          if (!res.ok) throw new Error(await res.text());
-          const { url } = await res.json();
-          window.open(url, '_blank');
+          await showAttemptPhoto(id, attempt);
         } catch (err) {
           alert('Failed to open photo — try again. (' + err.message + ')');
         } finally {
-          btn.disabled = false;
+          delete btn.dataset.busy;
           btn.textContent = original;
         }
       });
@@ -1732,6 +1756,7 @@
   }
 
   sendIntakeBtn.addEventListener('click', async () => {
+    askAliasIfWeiss(); // Scott Weiss case: always ask alias or not before saving
     sendIntakeBtn.disabled = true;
     intakeStatus.textContent = 'Logging intake…';
     intakeStatus.className = 'status';

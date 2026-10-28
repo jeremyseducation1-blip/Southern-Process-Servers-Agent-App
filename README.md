@@ -551,3 +551,6 @@ A case's **Return** tab has a "Given to another agent" button (also an option un
 
 ## Mileage
 Route tab: save a **home address**, build the route, and "Open route in Maps" now always ends back home. **Calculate miles** measures home → stops (in order) → home using free OpenStreetMap services (Nominatim geocoding + OSRM road distance) straight from the phone; the number is editable (e.g. to match the odometer) before **Save trip**. Trips and the home address are stored as one private JSON file in a Supabase Storage bucket `mileage` (auto-created, no SQL). Paperwork → Mileage lists trips by year with totals, delete, and a CSV download (`mileage-csv`) for taxes.
+
+## Fill in from scanned papers
+New case → **Choose scanned PDFs** reads Genius Scan PDFs of the court's *Return of Service* sheet **on the phone** (OCR via self-hosted tesseract.js + pdf.js in `public/vendor/`; nothing is uploaded to be read, no API key). Each page becomes one case card (docket no., plaintiff, defendant, address, phone, county, court type) to check and save; the docket's grey print gets a second zoomed-in pass if the first misses it. Attorney is suggested from earlier cases with the same plaintiff, else from the file name tag (`Name-Fox.pdf` → Fox). `public/js/rosParser.js` is the text parser.

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0B2A5B">
 <title>Southern Process Servers</title>
-<link rel="stylesheet" href="/css/style.css?v=20261101">
-<link rel="stylesheet" href="/css/app-ui.css?v=20261101">
+<link rel="stylesheet" href="/css/style.css?v=20261102">
+<link rel="stylesheet" href="/css/app-ui.css?v=20261102">
 </head>
 <body class="app-shell">
 
@@ -67,6 +67,14 @@
       <div class="progress"><span class="on"></span><span></span><span></span></div>
     </div>
     <div class="view-body">
+      <section class="card" id="rosCard">
+        <h2>Fill in from scanned papers</h2>
+        <p class="hint">Scan the papers in Genius Scan, then choose the PDFs here. The app reads them right on your phone — nothing is sent anywhere to be read — and fills in each case for you to check before saving.</p>
+        <button type="button" class="btn primary" id="rosPickBtn">Choose scanned PDFs</button>
+        <input type="file" id="rosFiles" accept="application/pdf" multiple hidden>
+        <p class="status" id="rosStatus"></p>
+        <div id="rosResults"></div>
+      </section>
       <section class="card" id="intakeCard">
         <div class="grid-2">
           <label data-step="1" >Case No.
@@ -317,8 +325,9 @@
     <button type="button" class="tab" data-view="paperwork"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg><span>Paperwork</span></button>
   </nav>
 
-  <script src="/js/signature-pad.js?v=20261101"></script>
-  <script src="/js/priority.js?v=20261101"></script>
-  <script src="/js/app.js?v=20261101"></script>
+  <script src="/js/rosParser.js?v=20261102"></script>
+  <script src="/js/signature-pad.js?v=20261102"></script>
+  <script src="/js/priority.js?v=20261102"></script>
+  <script src="/js/app.js?v=20261102"></script>
 </body>
 </html>

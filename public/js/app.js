@@ -2820,6 +2820,222 @@
     }
   }
 
+
+  // ---------- Intake from scanned PDFs (read on the phone, nothing uploaded) ----------
+  const rosFiles = $('#rosFiles');
+  const rosStatus = $('#rosStatus');
+  const rosResults = $('#rosResults');
+  const ROS_V = '20261102';
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();
+      const s = document.createElement('script');
+      s.src = src; s.dataset.lib = src;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('Could not load the reader (' + src + ').'));
+      document.head.appendChild(s);
+    });
+  }
+  let ocrWorkerPromise = null;
+  function getOcrWorker() {
+    if (!ocrWorkerPromise) {
+      ocrWorkerPromise = (async () => {
+        await loadScriptOnce('/vendor/pdf.min.js?v=' + ROS_V);
+        await loadScriptOnce('/vendor/tesseract/tesseract.min.js?v=' + ROS_V);
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js?v=' + ROS_V;
+        return window.Tesseract.createWorker('eng', 1, {
+          workerPath: '/vendor/tesseract/worker.min.js',
+          corePath: '/vendor/tesseract/',
+          langPath: '/vendor/tesseract/lang',
+          gzip: true
+        });
+      })();
+      ocrWorkerPromise.catch(() => { ocrWorkerPromise = null; });
+    }
+    return ocrWorkerPromise;
+  }
+
+  async function pdfToCanvases(file) {
+    const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+    const out = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: Math.min(3, 1800 / base.width) });
+      const c = document.createElement('canvas');
+      c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      out.push(c);
+    }
+    return out;
+  }
+
+  // Light-grey printed numbers (the docket) often get skipped on the full
+  // page. Re-read just the top-right corner, enlarged and darkened.
+  async function readDocketCorner(worker, canvas) {
+    const sx = Math.round(canvas.width * 0.45), sy = 0;
+    const sw = canvas.width - sx, sh = Math.round(canvas.height * 0.2);
+    const c = document.createElement('canvas');
+    c.width = sw * 1.5; c.height = sh * 1.5;
+    const g = c.getContext('2d');
+    g.drawImage(canvas, sx, sy, sw, sh, 0, 0, c.width, c.height);
+    const img = g.getImageData(0, 0, c.width, c.height);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = (img.data[i] + img.data[i + 1] + img.data[i + 2]) / 3 < 205 ? 0 : 255;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    }
+    g.putImageData(img, 0, 0);
+    const { data } = await worker.recognize(c);
+    return window.ROSParser.findDocket(data.text);
+  }
+
+  async function readPdfFile(file, onProgress) {
+    const worker = await getOcrWorker();
+    const pages = await pdfToCanvases(file);
+    const found = [];
+    for (let i = 0; i < pages.length; i++) {
+      onProgress(i + 1, pages.length);
+      const { data } = await worker.recognize(pages[i]);
+      const rec = window.ROSParser.parsePage(data.text);
+      if (!rec.docket) {
+        try {
+          const d = await readDocketCorner(worker, pages[i]);
+          if (d) {
+            rec.docket = d.value; rec.docketSure = d.sure;
+            rec.warnings = rec.warnings.filter((w) => !/docket/i.test(w));
+            if (!d.sure) rec.warnings.push('Check the docket number.');
+            if (!rec.courtType && /^\d{2}GC/.test(d.value)) rec.courtType = 'General Sessions';
+          }
+        } catch (_) { /* leave the warning in place */ }
+      }
+      rec.sourceFile = file.name; rec.page = i + 1; rec.pageCount = pages.length;
+      found.push(rec);
+    }
+    return found;
+  }
+
+  // "Pamela_Works-Fox.pdf" -> "Fox" (your own filing tag: the attorney)
+  function attorneyFromFileName(name) {
+    const m = /-([A-Za-z][A-Za-z .']{1,30})\.pdf$/i.exec(name || '');
+    return m ? window.ROSParser.titleCase(m[1].replace(/_/g, ' ')) : '';
+  }
+
+  function rosCardHtml(r, idx, knownAttorney, dupe) {
+    const e = esc;
+    const warn = r.warnings.length ? `<p class="status err">${e(r.warnings.join(' '))}</p>` : '';
+    const dupeNote = dupe ? `<p class="status err">This case number and defendant are already logged and still open.</p>` : '';
+    return `<div class="case-row ros-card" data-ros="${idx}">` +
+      `<div class="case-style">${e(r.defendant || 'Unknown defendant')}</div>` +
+      `<div class="case-meta">from ${e(r.sourceFile)}${r.pageCount > 1 ? ' (page ' + r.page + ' of ' + r.pageCount + ')' : ''}</div>` +
+      warn + dupeNote +
+      `<label>Case No. <input type="text" class="ros-caseNo" value="${e(r.docket || '')}"></label>` +
+      `<label>Plaintiff <input type="text" class="ros-plaintiff" value="${e(r.plaintiff)}"></label>` +
+      `<label>Defendant <input type="text" class="ros-defendant" value="${e(r.defendant)}"></label>` +
+      `<label>Service address <input type="text" class="ros-address" value="${e(r.serviceAddress)}"></label>` +
+      `<label>Phone number(s) <input type="text" class="ros-phone" value="${e(r.phone)}"></label>` +
+      `<label>Attorney of record <input type="text" class="ros-attorney" value="${e(knownAttorney)}" placeholder="Leave blank if you don't know"></label>` +
+      `<details class="ros-more"><summary>Court, county, dates (optional)</summary>` +
+      `<label>Court type <select class="ros-court">${courtTypeOptions(r.courtType || 'General Sessions')}</select></label>` +
+      `<label>County <input type="text" class="ros-county" value="${e(r.county)}"></label>` +
+      `<label>Document type <select class="ros-caseType">${$('#caseType').innerHTML}</select></label>` +
+      `<label>Court date (if the paper has one) <input type="date" class="ros-courtDate"></label>` +
+      `<label>Issued on (date printed on the paper) <input type="date" class="ros-issueDate"></label>` +
+      `</details>` +
+      `<button type="button" class="btn primary ros-save-btn">Save this case</button>` +
+      `<p class="status ros-status"></p>` +
+      `</div>`;
+  }
+
+  async function saveRosCard(card) {
+    const q = (s) => card.querySelector(s);
+    const st = q('.ros-status'), btn = q('.ros-save-btn');
+    const caseNo = q('.ros-caseNo').value.trim();
+    const defendant = q('.ros-defendant').value.trim();
+    if (!caseNo || !defendant) { st.textContent = 'A case number and defendant are required.'; st.className = 'status err ros-status'; return false; }
+    const attorney = q('.ros-attorney').value.trim();
+    let isAlias = false;
+    if (attorney.toLowerCase() === 'scott weiss') {
+      isAlias = confirm(`Scott Weiss is the attorney on ${caseNo}.\n\nIs this an ALIAS summons?\n\nOK = yes, alias\nCancel = no, regular summons`);
+    }
+    btn.disabled = true;
+    st.textContent = 'Saving…'; st.className = 'status ros-status';
+    try {
+      const res = await fetch('/.netlify/functions/intake', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseInfo: {
+          courtType: q('.ros-court').value, county: q('.ros-county').value.trim(), state: 'Tennessee',
+          caseNo, caseType: q('.ros-caseType').value, plaintiff: q('.ros-plaintiff').value.trim(),
+          defendant, defendants: [{ name: defendant, served: false }],
+          serviceAddress: q('.ros-address').value.trim(),
+          courtDate: q('.ros-courtDate').value || null, issueDate: q('.ros-issueDate').value || null,
+          attorney, notes: '', phoneNumbers: q('.ros-phone').value.trim(), isAlias
+        } })
+      });
+      if (!res.ok) throw new Error(await res.text());
+      st.textContent = '✓ Saved'; st.className = 'status ok ros-status';
+      card.dataset.saved = '1';
+      card.querySelectorAll('input,select').forEach((el) => { el.disabled = true; });
+      btn.hidden = true;
+      allCasesCache = null;
+      return true;
+    } catch (err) {
+      st.textContent = 'Not saved — ' + err.message; st.className = 'status err ros-status';
+      btn.disabled = false;
+      return false;
+    }
+  }
+
+  $('#rosPickBtn').addEventListener('click', () => rosFiles.click());
+  rosFiles.addEventListener('change', async () => {
+    const files = Array.from(rosFiles.files || []);
+    rosFiles.value = '';
+    if (!files.length) return;
+    const pick = $('#rosPickBtn');
+    pick.disabled = true;
+    rosResults.innerHTML = '';
+    rosStatus.className = 'status';
+    const records = [];
+    try {
+      for (let f = 0; f < files.length; f++) {
+        try {
+          const recs = await readPdfFile(files[f], (p, n) => {
+            rosStatus.textContent = `Reading file ${f + 1} of ${files.length}` + (n > 1 ? `, page ${p} of ${n}` : '') + '… (first time takes a bit longer)';
+          });
+          records.push(...recs);
+        } catch (err) {
+          records.push({ sourceFile: files[f].name, page: 1, pageCount: 1, docket: '', plaintiff: '', defendant: '', serviceAddress: '', phone: '', county: '', courtType: '', warnings: ['Could not read this file (' + err.message + ') — type it in on the form below, or try re-scanning.'] });
+        }
+      }
+      let known = [];
+      try { known = await ensureAllCasesLoaded(); } catch (_) { /* no suggestions then */ }
+      const attyByPlaintiff = new Map();
+      known.slice().sort((a, b) => String(a.intakeDate || '').localeCompare(String(b.intakeDate || ''))).forEach((c) => {
+        if (c.plaintiff && c.attorney) attyByPlaintiff.set(c.plaintiff.trim().toLowerCase(), c.attorney);
+      });
+      rosResults.innerHTML = records.map((r, i) => {
+        const dupe = known.some((c) => c.status === 'open' && String(c.caseNo).toUpperCase() === String(r.docket).toUpperCase() &&
+          String(c.defendant || '').toLowerCase() === String(r.defendant || '').toLowerCase());
+        const atty = attyByPlaintiff.get((r.plaintiff || '').toLowerCase()) || attorneyFromFileName(r.sourceFile);
+        return rosCardHtml(r, i, atty, dupe);
+      }).join('') + (records.length > 1 ? `<button type="button" class="btn primary" id="rosSaveAllBtn">Save all ${records.length} cases</button>` : '');
+      rosResults.querySelectorAll('.ros-save-btn').forEach((b) => b.addEventListener('click', () => saveRosCard(b.closest('.ros-card'))));
+      const all = $('#rosSaveAllBtn');
+      if (all) all.addEventListener('click', async () => {
+        all.disabled = true;
+        for (const card of rosResults.querySelectorAll('.ros-card')) { if (!card.dataset.saved) await saveRosCard(card); }
+        all.disabled = false;
+      });
+      rosStatus.textContent = `Read ${records.length} paper${records.length === 1 ? '' : 's'}. Check each one, then save.`;
+      rosStatus.className = 'status ok';
+    } catch (err) {
+      rosStatus.textContent = 'Could not read the PDFs — ' + err.message;
+      rosStatus.className = 'status err';
+    } finally {
+      pick.disabled = false;
+    }
+  });
+
   // ---------- New case: three short steps ----------
   const INTAKE_STEP_TITLES = ['case, plaintiff and defendant', 'court details', 'notes and phone numbers'];
   function setIntakeStep(n) {

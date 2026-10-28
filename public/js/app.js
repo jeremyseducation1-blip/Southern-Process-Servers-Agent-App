@@ -648,8 +648,47 @@
   // the current location, stops in the order tapped. (Apple doesn't
   // document multi-stop links, but Maps on iPhone draws them. If it ever
   // only shows the first stop, "Navigate to next stop" always works.)
-  function buildMapsUrl(addrs) {
-    return 'https://maps.apple.com/?dirflg=d&saddr=Current%20Location&' + addrs.map((a) => 'daddr=' + encodeURIComponent(a)).join('&');
+  // `start` null = Apple Maps uses wherever you are right now.
+  function buildMapsUrl(addrs, start) {
+    return 'https://maps.apple.com/?dirflg=d' + (start ? '&saddr=' + encodeURIComponent(start) : '') + '&' + addrs.map((a) => 'daddr=' + encodeURIComponent(a)).join('&');
+  }
+
+  // Where the route starts and ends. Default: start where you are, end at the last stop.
+  const routeStartSel = $('#routeStartSel');
+  const routeEndSel = $('#routeEndSel');
+  const routeStartAddr = $('#routeStartAddr');
+  const routeEndAddr = $('#routeEndAddr');
+  try {
+    routeStartSel.value = localStorage.getItem('sps_routeStart') || 'here';
+    routeEndSel.value = localStorage.getItem('sps_routeEnd') || 'last';
+    routeStartAddr.value = localStorage.getItem('sps_routeStartAddr') || '';
+    routeEndAddr.value = localStorage.getItem('sps_routeEndAddr') || '';
+  } catch (_) { /* ignore */ }
+  function syncEnds() {
+    routeStartAddr.hidden = routeStartSel.value !== 'custom';
+    routeEndAddr.hidden = routeEndSel.value !== 'custom';
+    try {
+      localStorage.setItem('sps_routeStart', routeStartSel.value);
+      localStorage.setItem('sps_routeEnd', routeEndSel.value);
+      localStorage.setItem('sps_routeStartAddr', routeStartAddr.value);
+      localStorage.setItem('sps_routeEndAddr', routeEndAddr.value);
+    } catch (_) { /* ignore */ }
+  }
+  [routeStartSel, routeEndSel].forEach((el) => el.addEventListener('change', syncEnds));
+  [routeStartAddr, routeEndAddr].forEach((el) => el.addEventListener('input', syncEnds));
+  syncEnds();
+
+  // Returns { start: address|null (null = current location), end: address|null (null = last stop) }
+  // or { error } when something needed is missing.
+  function routeEnds() {
+    const home = ($('#homeAddress').value || '').trim();
+    let start = null;
+    let end = null;
+    if (routeStartSel.value === 'home') { if (!home) return { error: 'Save your home address first, or pick a different start.' }; start = home; }
+    if (routeStartSel.value === 'custom') { start = routeStartAddr.value.trim(); if (!start) return { error: 'Type the start address.' }; }
+    if (routeEndSel.value === 'home') { if (!home) return { error: 'Save your home address first, or pick a different end.' }; end = home; }
+    if (routeEndSel.value === 'custom') { end = routeEndAddr.value.trim(); if (!end) return { error: 'Type the end address.' }; }
+    return { start, end };
   }
 
   function routeAddresses() {
@@ -663,17 +702,15 @@
       alert('Add at least one case to the route first.');
       return;
     }
-    const home = ($('#homeAddress').value || '').trim();
-    if (!home) {
-      alert('Save your home address first — every route ends back home so the miles add up.');
-      $('#homeAddress').focus();
+    const ends = routeEnds();
+    if (ends.error) { alert(ends.error); return; }
+    const dests = routeAddresses().map((c) => c.serviceAddress);
+    if (ends.end) dests.push(ends.end);
+    if (dests.length > 9) {
+      alert('Maps handles about 9 stops at a time. Remove a few and open the rest as a second route.');
       return;
     }
-    if (routeOrder.length > 9) {
-      alert('Maps handles about 9 stops plus home at a time. Remove a few and open the rest as a second route.');
-      return;
-    }
-    window.open(buildMapsUrl([...routeAddresses().map((c) => c.serviceAddress), home]), '_blank');
+    window.open(buildMapsUrl(dests, ends.start), '_blank');
   });
 
 
@@ -757,7 +794,7 @@
   }
   async function routeMiles(addresses) {
     const pts = [];
-    for (const a of addresses) pts.push(await geocode(a));
+    for (const a of addresses) pts.push(typeof a === 'object' ? a : await geocode(a));
     const coords = pts.map((p) => p.lon + ',' + p.lat).join(';');
     const res = await fetch('https://router.project-osrm.org/route/v1/driving/' + coords + '?overview=false');
     if (!res.ok) throw new Error('route lookup failed (' + res.status + ')');
@@ -767,25 +804,39 @@
     return { total: legs.reduce((s, m) => s + m, 0), legs };
   }
 
+  function hereNow() {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error('This phone would not share your location.'));
+      navigator.geolocation.getCurrentPosition(
+        (p) => resolve({ lat: p.coords.latitude, lon: p.coords.longitude }),
+        () => reject(new Error('Could not get your location — pick Home or type a start address instead.')),
+        { enableHighAccuracy: true, timeout: 15000 }
+      );
+    });
+  }
+
   $('#calcMilesBtn').addEventListener('click', async () => {
-    const home = homeInput.value.trim();
     const ordered = routeAddresses();
     milesStatus.textContent = '';
-    if (!home) { milesStatus.textContent = 'Save your home address first.'; milesStatus.className = 'status err'; return; }
     if (!ordered.length) { milesStatus.textContent = 'Add at least one case to the route first.'; milesStatus.className = 'status err'; return; }
+    const ends = routeEnds();
+    if (ends.error) { milesStatus.textContent = ends.error; milesStatus.className = 'status err'; return; }
     const btn = $('#calcMilesBtn');
     btn.disabled = true;
     milesStatus.textContent = 'Calculating… (about a second per stop)';
     milesStatus.className = 'status';
     milesResult.innerHTML = '';
     $('#saveTripBox').hidden = true;
+    lastRouteStops = ordered.map((c) => c.serviceAddress);
     try {
-      const stops = [home, ...ordered.map((c) => c.serviceAddress), home]; // always back home at the end
+      const startPt = ends.start || (await hereNow());
+      const stops = [startPt, ...ordered.map((c) => c.serviceAddress)];
+      if (ends.end) stops.push(ends.end);
+      const label = (v, i) => (typeof v === 'object' ? 'Where you are now' : (i === 0 ? ends.start : v));
       const { total, legs } = await routeMiles(stops);
-      lastRouteStops = ordered.map((c) => c.serviceAddress);
       milesResult.innerHTML =
-        `<p><strong>${total.toFixed(1)} miles</strong> round trip</p>` +
-        legs.map((m, i) => `<div class="defendant-line">${esc(i === 0 ? 'Home' : stops[i])} → ${esc(i === legs.length - 1 ? 'Home' : stops[i + 1])}: ${m.toFixed(1)} mi</div>`).join('');
+        `<p><strong>${total.toFixed(1)} miles</strong> ${ends.end ? 'start to finish' : 'to your last stop'}</p>` +
+        legs.map((m, i) => `<div class="defendant-line">${esc(label(stops[i], i))} → ${esc(label(stops[i + 1], i + 1))}: ${m.toFixed(1)} mi</div>`).join('');
       $('#tripMiles').value = total.toFixed(1);
       $('#tripMiles').dataset.estimate = total.toFixed(1);
       $('#tripDate').value = new Date().toLocaleDateString('en-CA');
@@ -794,7 +845,6 @@
     } catch (err) {
       milesStatus.textContent = err.message + ' You can still type your miles by hand below.';
       milesStatus.className = 'status err';
-      lastRouteStops = ordered.map((c) => c.serviceAddress);
       $('#tripDate').value = new Date().toLocaleDateString('en-CA');
       $('#saveTripBox').hidden = false;
     }
@@ -2946,7 +2996,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261107';
+  const ROS_V = '20261108';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

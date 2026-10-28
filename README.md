@@ -573,3 +573,7 @@ Each case has a **Notes** tab: a running, append-only log (who, when, what). Not
 
 - A route belongs to the day it was built (Central time). Anything left from an earlier day is dropped, so each morning starts from zero. **End route & start a new one** (Route tab) or **End route** (Today's Next-stop card) clears it mid-day, e.g. a morning route then a different afternoon route. Logged attempts are untouched.
 - The weekly invoice list is counted by the server with the same code that builds each week's PDF (`week-invoice-summary`), so the number on the button always equals the invoice. All completed outcomes count, including Return Requested per Plaintiff.
+
+## Route start and end
+
+The Route tab has **Start from** (where I am right now / Home / another address) and **End at** (my last stop / Home / another address). Defaults: start where you are, end at the last stop. "Where I am" leaves the start off the Apple Maps link, so Maps begins at your current position. Mileage uses the same start and end (GPS position for "where I am").

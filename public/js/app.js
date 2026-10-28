@@ -1787,7 +1787,8 @@
                 return;
               }
               allCasesCache = null;
-              alert('Sent to Kevin and marked returned.');
+              const physical = physicalReturnNote(c);
+              alert('Sent to Kevin and marked returned.' + (physical ? '\n\n' + physical : ''));
               caseSearchInput.dispatchEvent(new Event('input'));
             } catch (err) {
               alert('Failed — try again. (' + err.message + ')');
@@ -1891,6 +1892,8 @@
           });
           if (!res.ok) throw new Error(await res.text());
           allCasesCache = null;
+          const physicalNote = physicalReturnNote(c);
+          if (physicalNote) alert(physicalNote);
 
           // Alias + Scott Weiss cases still need the affidavit, even
           // once returned. If all 3 attempts are already logged, offer
@@ -2788,6 +2791,18 @@
     }
   }
 
+  // Davidson County returns are handled electronically. Any other county needs
+  // the original paperwork physically handed back to Kevin, so say so as soon
+  // as the return is done. (Blank county = unknown -> ask, rather than miss one.)
+  function physicalReturnNote(c) {
+    const county = String((c && c.county) || '').trim();
+    if (/davidson/i.test(county)) return '';
+    if (!county) {
+      return '📄 No county is on this case. If it is NOT Davidson County, return the physical document to Kevin.';
+    }
+    return `📄 RETURN THE PHYSICAL DOCUMENT TO KEVIN\n\n${c.caseNo || 'This case'} is in ${county}, not Davidson County. The original paperwork has to go back to Kevin.`;
+  }
+
   // Called after every render of the Cases list.
   function wireCaseSheets() {
     caseSearchResults.querySelectorAll('[data-open-case]').forEach((el) => {
@@ -3004,7 +3019,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261109';
+  const ROS_V = '20261110';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

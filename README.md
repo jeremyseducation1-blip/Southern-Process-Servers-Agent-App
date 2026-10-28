@@ -577,3 +577,7 @@ Each case has a **Notes** tab: a running, append-only log (who, when, what). Not
 ## Route start and end
 
 The Route tab has **Start from** (where I am right now / Home / another address) and **End at** (my last stop / Home / another address). Defaults: start where you are, end at the last stop. "Where I am" leaves the start off the Apple Maps link, so Maps begins at your current position. Mileage uses the same start and end (GPS position for "where I am").
+
+## Physical returns outside Davidson County
+
+When a return is completed (upload-and-send or manual "Mark returned") on a case whose county isn't Davidson, a pop-up says to return the physical document to Kevin. A case with no county gets a softer "check the county" pop-up so none are missed.

@@ -9,7 +9,7 @@ function client() {
 
 // Fields safe to hand to an outside viewer -- deliberately leaves out
 // anything internal (signature data, raw photos, etc.).
-function publicView(c) {
+function publicView(c, withNotes) {
   return {
     id: c.id,
     hasReturnPdf: !!c.returnPdfPath,
@@ -31,6 +31,8 @@ function publicView(c) {
     returnOutcome: c.returnOutcome || null,
     affidavitSent: c.affidavitSent,
     closedDate: c.closedDate || null,
+    // Internal note log is only for Kevin's ALL-scope link, never a firm's.
+    notesLog: withNotes ? (c.notesLog || []).map((n) => ({ id: n.id, at: n.at, by: n.by, text: n.text })) : undefined,
     // Attempt history (date, note, and whether/when a photo was taken) --
     // Kevin needs to see this, not just the case-level status. Leaves out
     // the internal storage path for the photo itself (that'd need a
@@ -71,7 +73,7 @@ exports.handler = async (event) => {
     const { data, error } = await query;
     if (error) throw new Error(error.message);
 
-    const cases = (data || []).map((row) => publicView(row.data));
+    const cases = (data || []).map((row) => publicView(row.data, link.scope === 'ALL'));
 
     return {
       statusCode: 200,

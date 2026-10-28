@@ -559,3 +559,12 @@ New case → **Choose scanned PDFs** reads Genius Scan PDFs of the court's *Retu
 **Login:** set `APP_PASSWORD` in Netlify (Site configuration → Environment variables). Until it's set the app stays open as before; once set, every function except the share-link pages requires a signed-in device (60 days). Optional `AUTH_SECRET` signs tokens. Changing the password signs everyone out.
 
 **AI reading (any form):** set `ANTHROPIC_API_KEY` (create a dedicated key in the Anthropic console and put a monthly spend limit on it). Optional `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`). New case → *Choose scanned PDFs* sends the page images to `read-paper-start` → background function `read-paper-background` calls Claude (forced tool call → structured fields) → `read-paper-result`. Page images and results are deleted from the private `readings` bucket as soon as the app picks them up (anything left is purged after a day). The AI endpoints refuse to run unless the login is configured. If the key or login isn't set up, or the AI call fails, the app falls back to the free on-phone reader.
+
+## Case notes (Kevin ↔ Jeremy)
+
+Each case has a **Notes** tab: a running, append-only log (who, when, what). Notes can't be edited or deleted, so "it's in the notes" settles it.
+
+- **Kevin** leaves notes from his all-cases share link (`view.html?token=…`) — open a case's "💬 Notes" box, type, **Send note**. Law-firm links never see or add notes.
+- **Jeremy** sees new notes on the **Today** tab (a "New notes" card plus a number badge on the tab) and replies from the case's Notes tab. Opening the tab marks them read.
+- **Notification:** every note from Kevin is also emailed to `NOTIFY_EMAIL` (optional; defaults to `GMAIL_SENDER_EMAIL`) using the existing Gmail settings, so it arrives as a normal phone notification. Real push notifications would need the app installed to the Home Screen as a web app — a possible later step.
+- Functions: `add-note` (Kevin via ALL-scope token, Jeremy via login), `mark-notes-read`; `view-cases` includes notes only for ALL-scope links.

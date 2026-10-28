@@ -200,7 +200,8 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .case-sheet[data-tab="info"] .sheet-tab[data-tab="info"],
 .app-shell .case-sheet[data-tab="attempts"] .sheet-tab[data-tab="attempts"],
 .app-shell .case-sheet[data-tab="return"] .sheet-tab[data-tab="return"],
-.app-shell .case-sheet[data-tab="papers"] .sheet-tab[data-tab="papers"]{
+.app-shell .case-sheet[data-tab="papers"] .sheet-tab[data-tab="papers"],
+.app-shell .case-sheet[data-tab="notes"] .sheet-tab[data-tab="notes"]{
   color:var(--blue);font-weight:800;border-bottom-color:var(--blue);
 }
 .app-shell .sheet-body{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px 24px;}
@@ -208,6 +209,7 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .case-sheet[data-tab="info"] .sheet-pane[data-pane="info"],
 .app-shell .case-sheet[data-tab="attempts"] .sheet-pane[data-pane="attempts"],
 .app-shell .case-sheet[data-tab="return"] .sheet-pane[data-pane="return"],
+.app-shell .case-sheet[data-tab="notes"] .sheet-pane[data-pane="notes"],
 .app-shell .case-sheet[data-tab="papers"] .sheet-pane[data-pane="papers"]{display:flex;}
 .app-shell .sheet-pane .btn{width:100%;margin-top:0;}
 .app-shell .info-card{background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 4px rgba(11,42,91,.08);}
@@ -293,3 +295,20 @@ body.app-shell [hidden]{display:none !important;}
   flex:1;margin-top:0 !important;display:flex;align-items:center;justify-content:center;
   text-align:center;cursor:pointer;font-size:.9rem;
 }
+
+/* notes thread + badges */
+.app-shell .sheet-tab{font-size:.8rem;}
+.app-shell .note-count,.tabbar .tab-badge{
+  display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 5px;
+  border-radius:9px;background:#FFC72C;color:#0B2A5B;font-size:.7rem;font-weight:800;
+}
+.tabbar .tab{position:relative;}
+.tabbar .tab-badge{position:absolute;top:-2px;right:8px;}
+.app-shell .notes-thread{display:flex;flex-direction:column;gap:8px;}
+.app-shell .note-bubble{border-radius:14px;padding:10px 12px;max-width:92%;background:#fff;box-shadow:0 1px 3px rgba(11,42,91,.08);}
+.app-shell .note-bubble.kevin{align-self:flex-start;border-left:4px solid #FFC72C;}
+.app-shell .note-bubble.me{align-self:flex-end;background:#E8EEFC;border-right:4px solid #1E4FD8;}
+.app-shell .note-bubble.unread{box-shadow:0 0 0 2px #FFC72C;}
+.app-shell .note-meta{font-size:.72rem;color:#4A5B7C;margin-bottom:2px;}
+.app-shell .note-text{white-space:pre-wrap;font-size:.95rem;color:#0B1F44;}
+.app-shell .note-input{width:100%;box-sizing:border-box;border:2px solid #C9D5EE;border-radius:12px;padding:10px 12px;font:inherit;font-size:1rem;}

@@ -251,6 +251,24 @@
 
   // ---------- "I'm here" (GPS-stamped arrival) + route ----------
   const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+
+  // ---------- Case notes (Kevin <-> Jeremy running log) ----------
+  const fmtNoteTime = (iso) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  const unreadNotes = (c) => (c.notesLog || []).filter((n) => !n.readByJeremy);
+  function notesThreadHtml(c) {
+    const log = c.notesLog || [];
+    if (!log.length) return '<p class="hint">No notes yet. Notes can\'t be edited or deleted, so this is the record of who said what.</p>';
+    return log.map((n) =>
+      `<div class="note-bubble ${n.by === 'Kevin' ? 'kevin' : 'me'}${n.readByJeremy ? '' : ' unread'}">` +
+      `<div class="note-meta"><b>${esc(n.by)}</b> · ${esc(fmtNoteTime(n.at))}</div>` +
+      `<div class="note-text">${esc(n.text)}</div></div>`
+    ).join('');
+  }
+  function updateNotesBadge(cases) {
+    const n = (cases || []).reduce((sum, c) => sum + unreadNotes(c).length, 0);
+    const b = document.getElementById('todayBadge');
+    if (b) { b.textContent = n > 9 ? '9+' : String(n); b.hidden = !n; }
+  }
   const centralTime = (iso) =>
     new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Chicago' });
 
@@ -1242,6 +1260,7 @@
           `<button type="button" class="sheet-tab" data-tab="attempts">Attempts</button>` +
           `<button type="button" class="sheet-tab" data-tab="return">Return</button>` +
           `<button type="button" class="sheet-tab" data-tab="papers">Papers</button>` +
+          `<button type="button" class="sheet-tab" data-tab="notes">Notes${unreadNotes(c).length ? ` <span class="note-count">${unreadNotes(c).length}</span>` : ''}</button>` +
           `</div>` +
           `<div class="sheet-body">` +
           `<div class="sheet-pane" data-pane="info">` +
@@ -1263,6 +1282,12 @@
           `</div>` +
           `<div class="sheet-pane" data-pane="papers">` +
           noPapers + viewAffidavitBtn + affidavitBtn + markAffidavitSentBtn +
+          `</div>` +
+          `<div class="sheet-pane" data-pane="notes">` +
+          `<div class="notes-thread" data-notes-thread="${esc(c.id)}">${notesThreadHtml(c)}</div>` +
+          `<textarea class="note-input" rows="3" maxlength="2000" placeholder="Add a note to this case…"></textarea>` +
+          `<button type="button" class="btn primary note-add-btn" data-id="${esc(c.id)}">Add note</button>` +
+          `<p class="status note-status"></p>` +
           `</div>` +
           `</div>` +
           `</div>` +
@@ -2610,6 +2635,9 @@
   $('#refreshScheduleBtn').addEventListener('click', refreshSchedule);
   // The first thing you see when you open the app.
   refreshSchedule();
+  // Coming back to the app (or every few minutes while it's open) picks up new notes.
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshSchedule(); });
+  setInterval(() => { if (document.visibilityState === 'visible' && !document.body.classList.contains('sheet-open')) refreshSchedule(); }, 180000);
 
   // ====================== App shell: tabs, Today, case page ======================
   let currentSheet = null; // { id, tab } -- the case page that's open, if any
@@ -2644,6 +2672,7 @@
     document.body.classList.add('sheet-open');
     const body = row.querySelector('.sheet-body');
     if (body) body.scrollTop = 0;
+    if (tab === 'notes') markNotesRead(id);
     return true;
   }
 
@@ -2655,6 +2684,18 @@
       soloCase = false;
       if (!(opts && opts.silent)) refreshCases();
     }
+  }
+
+
+  async function markNotesRead(id) {
+    const c = (allCasesCache || []).find((x) => x.id === id);
+    if (!c || !unreadNotes(c).length) return;
+    (c.notesLog || []).forEach((n) => { n.readByJeremy = true; });
+    updateNotesBadge(allCasesCache);
+    document.querySelectorAll(`[data-case-row="${CSS.escape(id)}"] .sheet-tab[data-tab="notes"] .note-count`).forEach((el) => el.remove());
+    try {
+      await fetch('/.netlify/functions/mark-notes-read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    } catch (_) { /* it will show as new again next time rather than be lost */ }
   }
 
   // Called after every render of the Cases list.
@@ -2672,6 +2713,31 @@
         if (currentSheet) currentSheet.tab = b.dataset.tab;
         const body = sheet.querySelector('.sheet-body');
         if (body) body.scrollTop = 0;
+        if (b.dataset.tab === 'notes') markNotesRead(sheet.closest('[data-case-row]').dataset.caseRow);
+      });
+    });
+    caseSearchResults.querySelectorAll('.note-add-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const pane = btn.closest('.sheet-pane');
+        const input = pane.querySelector('.note-input');
+        const st = pane.querySelector('.note-status');
+        const text = input.value.trim();
+        if (!text) { st.textContent = 'Write a note first.'; st.className = 'status err note-status'; return; }
+        btn.disabled = true; st.textContent = 'Saving…'; st.className = 'status note-status';
+        try {
+          const res = await fetch('/.netlify/functions/add-note', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: btn.dataset.id, text })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const { note } = await res.json();
+          const c = (allCasesCache || []).find((x) => x.id === btn.dataset.id);
+          if (c) { c.notesLog = (c.notesLog || []).concat([{ ...note, readByJeremy: true }]); pane.querySelector('.notes-thread').innerHTML = notesThreadHtml(c); }
+          input.value = ''; st.textContent = 'Saved.'; st.className = 'status ok note-status';
+        } catch (err) {
+          st.textContent = 'Not saved — ' + err.message; st.className = 'status err note-status';
+        }
+        btn.disabled = false;
       });
     });
     // A save re-renders the list; put the person back on the same case page / tab.
@@ -2775,6 +2841,22 @@
     $('#statMeet').textContent = meetingsToday;
     $('#statAttn').textContent = attn.length;
 
+    // Notes from Kevin not yet read
+    updateNotesBadge(cases);
+    const withNew = (cases || []).filter((c) => unreadNotes(c).length)
+      .sort((a, b) => unreadNotes(b).slice(-1)[0].at.localeCompare(unreadNotes(a).slice(-1)[0].at));
+    $('#notesCard').hidden = !withNew.length;
+    $('#notesList').innerHTML = withNew.map((c) => {
+      const last = unreadNotes(c).slice(-1)[0];
+      return `<div class="mini-row" data-note-case="${esc(c.id)}"><span class="dot yellow"></span>` +
+        `<div><div class="name">${esc(c.defendant || 'Unknown')} · ${esc(c.caseNo || '')}</div>` +
+        `<div class="sub">${esc(last.by)}: ${esc(last.text.length > 90 ? last.text.slice(0, 90) + '…' : last.text)}</div></div>` +
+        `<span class="tag yellow">${unreadNotes(c).length} new</span></div>`;
+    }).join('');
+    $('#notesList').querySelectorAll('[data-note-case]').forEach((row) => {
+      row.addEventListener('click', () => openCasePage(row.dataset.noteCase, { tab: 'notes' }));
+    });
+
     // Needs attention
     $('#attentionList').innerHTML = attn.length
       ? attn.slice(0, 5).map(({ c, pr }) => {
@@ -2825,7 +2907,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261103';
+  const ROS_V = '20261104';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

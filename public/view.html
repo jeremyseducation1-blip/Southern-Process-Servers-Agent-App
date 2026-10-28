@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Case Status — Southern Process Servers</title>
 <meta name="theme-color" content="#0B2A5B">
-<link rel="stylesheet" href="css/style.css?v=20261103">
-<link rel="stylesheet" href="css/app-ui.css?v=20261103">
+<link rel="stylesheet" href="css/style.css?v=20261104">
+<link rel="stylesheet" href="css/app-ui.css?v=20261104">
 <style>
   /* Read-only viewer: same blue + yellow look as the app, no tab bar. */
   body.app-shell.viewer{ padding-bottom:24px; }
@@ -30,6 +30,15 @@
   .viewer .attempt-history-line{ font-size:.82rem; padding:.3rem 0; border-top:1px solid #DCE4F2; }
   .viewer .attempt-history-line:first-of-type{ border-top:0; }
   .viewer .btn.view-return-btn,.viewer .btn.view-invoice-btn{ width:100%; }
+  .viewer details.notes-box{ margin-top:.6rem; background:#FFF8E1; border-radius:12px; padding:10px 12px; }
+  .viewer details.notes-box summary{ font-weight:800; font-size:.9rem; cursor:pointer; }
+  .viewer .note-bubble{ border-radius:12px; padding:8px 10px; margin-top:8px; max-width:92%; background:#fff; box-shadow:0 1px 3px rgba(11,42,91,.08); }
+  .viewer .note-bubble.me{ margin-left:auto; background:#E8EEFC; }
+  .viewer .note-meta{ font-size:.72rem; color:#4A5B7C; margin-bottom:2px; }
+  .viewer .note-text{ white-space:pre-wrap; font-size:.95rem; color:#0B1F44; }
+  .viewer .note-input{ width:100%; box-sizing:border-box; margin-top:10px; border:2px solid #C9D5EE; border-radius:12px; padding:10px 12px; font:inherit; font-size:1rem; }
+  .viewer .note-add-btn{ width:100%; margin-top:8px; }
+  .viewer .note-status{ font-size:.85rem; margin:.3rem 0 0; }
   .viewer h2.section-title{ font-size:1.05rem; font-weight:800; margin:18px 0 10px; color:#0B1F44; }
 </style>
 </head>
@@ -67,6 +76,25 @@
       }
 
       let allCases = [];
+      const drafts = {};
+      const openNotes = new Set();
+      const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      const noteTime = (iso) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+      function threadHtml(c) {
+        const log = c.notesLog || [];
+        if (!log.length) return '<p class="hint">No notes yet. Leave one here instead of calling; notes cannot be edited or deleted.</p>';
+        return log.map((n) => `<div class="note-bubble ${n.by === 'Kevin' ? 'kevin' : 'me'}"><div class="note-meta"><b>${esc(n.by)}</b> · ${esc(noteTime(n.at))}</div><div class="note-text">${esc(n.text)}</div></div>`).join('');
+      }
+      function notesBoxHtml(c) {
+        if (!Array.isArray(c.notesLog)) return ''; // only Kevin's all-cases link gets notes
+        const id = esc(c.id);
+        return `<details class="notes-box" data-notes-for="${id}"${openNotes.has(c.id) ? ' open' : ''}>` +
+          `<summary>💬 Notes (${c.notesLog.length})</summary>` +
+          `<div class="notes-thread">${threadHtml(c)}</div>` +
+          `<textarea class="note-input" rows="3" maxlength="2000" placeholder="Leave a note for Jeremy…" data-id="${id}">${esc(drafts[c.id] || '')}</textarea>` +
+          `<button type="button" class="btn primary note-add-btn" data-id="${id}">Send note</button>` +
+          `<p class="note-status"></p></details>`;
+      }
 
       function renderCases(cases) {
         if (!cases.length) {
@@ -109,6 +137,7 @@
                 <span class="${statusPillClass}">${statusLabel}${c.returnDate ? ' · Returned ' + c.returnDate : ''}</span>
                 ${c.hasReturnPdf ? `<button type="button" class="btn secondary view-return-btn" data-id="${String(c.id).replace(/"/g, '&quot;')}" style="margin-top:.4rem;">View return PDF</button>` : ''}
                 ${attemptHistory}
+                ${notesBoxHtml(c)}
               </div>`;
           })
           .join('');
@@ -156,6 +185,40 @@
           btn.disabled = false;
           btn.textContent = original;
         }
+      });
+
+      listEl.addEventListener('input', (e) => {
+        const ta = e.target.closest('.note-input');
+        if (ta) drafts[ta.dataset.id] = ta.value;
+      });
+      listEl.addEventListener('toggle', (e) => {
+        const d = e.target.closest && e.target.closest('details.notes-box');
+        if (!d) return;
+        if (d.open) openNotes.add(d.dataset.notesFor); else openNotes.delete(d.dataset.notesFor);
+      }, true);
+      listEl.addEventListener('click', async (e) => {
+        const btn = e.target.closest('.note-add-btn');
+        if (!btn) return;
+        const box = btn.closest('.notes-box');
+        const st = box.querySelector('.note-status');
+        const text = (drafts[btn.dataset.id] || '').trim();
+        if (!text) { st.textContent = 'Write a note first.'; return; }
+        btn.disabled = true; st.textContent = 'Sending…';
+        try {
+          const res = await fetch('/.netlify/functions/add-note', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: btn.dataset.id, text, token })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const { note } = await res.json();
+          const c = allCases.find((x) => String(x.id) === btn.dataset.id);
+          if (c) { c.notesLog = (c.notesLog || []).concat([note]); box.querySelector('.notes-thread').innerHTML = threadHtml(c); box.querySelector('summary').textContent = `💬 Notes (${c.notesLog.length})`; }
+          drafts[btn.dataset.id] = ''; box.querySelector('.note-input').value = '';
+          st.textContent = 'Sent. Jeremy has been notified.';
+        } catch (err) {
+          st.textContent = 'Not sent — ' + err.message + ' (your text is still here)';
+        }
+        btn.disabled = false;
       });
 
       searchInput.addEventListener('input', applyFilters);

@@ -510,7 +510,7 @@
           `<div class="case-meta">Case No. ${esc(c.caseNo)} — attempts logged: ${n}/3</div>` +
           `<button type="button" class="btn secondary route-pick-btn" style="margin-top:.4rem;">${pos >= 0 ? 'Remove from route' : 'Add to route'}</button> ` +
           `<a class="btn secondary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" ` +
-          `href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">Navigate</a> ` +
+          `href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(c.serviceAddress)}">Navigate</a> ` +
           `<button type="button" class="btn primary route-here-btn" style="margin-top:.4rem;">📍 Log attempt (I'm here)</button>` +
           `<div class="attempt-log-form" hidden></div>` +
           `</div>`
@@ -590,13 +590,12 @@
     renderRoute();
   });
 
-  // Multi-stop link in Google Maps' path form: .../maps/dir//A/B/C
-  // (the empty first slot = "your location" as the start; the stops follow
-  // in the order tapped). This form is what the Maps app draws as a full
-  // route; the older ?api=1&waypoints= form sometimes dropped the app onto
-  // its stop-editing screen without ever drawing the route.
+  // Multi-stop link for Apple Maps: repeated daddr= params, starting from
+  // the current location, stops in the order tapped. (Apple doesn't
+  // document multi-stop links, but Maps on iPhone draws them. If it ever
+  // only shows the first stop, "Navigate to next stop" always works.)
   function buildMapsUrl(addrs) {
-    return 'https://www.google.com/maps/dir//' + addrs.map((a) => encodeURIComponent(a)).join('/');
+    return 'https://maps.apple.com/?dirflg=d&saddr=Current%20Location&' + addrs.map((a) => 'daddr=' + encodeURIComponent(a)).join('&');
   }
 
   function routeAddresses() {
@@ -617,7 +616,7 @@
       return;
     }
     if (routeOrder.length > 9) {
-      alert('Google Maps only takes 10 stops at a time (the last one is home). Remove a few and open the rest as a second route.');
+      alert('Maps handles about 9 stops plus home at a time. Remove a few and open the rest as a second route.');
       return;
     }
     window.open(buildMapsUrl([...routeAddresses().map((c) => c.serviceAddress), home]), '_blank');
@@ -827,7 +826,7 @@
     }
     const next = ordered.find((c) => !(c.attempts || []).some((a) => a.date === new Date().toLocaleDateString('en-CA'))) || ordered[0];
     window.open(
-      `https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=${encodeURIComponent(next.serviceAddress)}`,
+      `https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(next.serviceAddress)}`,
       '_blank'
     );
   });
@@ -1087,7 +1086,7 @@
                 const gps = a.visitAt
                   ? ` · 📍 GPS-verified ${new Date(a.visitAt).toLocaleString('en-US', { timeZone: 'America/Chicago' })}` +
                     `${a.accuracy != null ? ' (±' + a.accuracy + ' m)' : ''} ` +
-                    `<a href="https://www.google.com/maps?q=${a.lat},${a.lng}" target="_blank" rel="noopener">map</a>`
+                    `<a href="https://maps.apple.com/?ll=${a.lat},${a.lng}&q=Attempt%20location" target="_blank" rel="noopener">map</a>`
                   : '';
                 return (
                   `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}${gps} ` +
@@ -1182,7 +1181,7 @@
         const bars = [1, 2, 3].map((n) => `<i class="${n <= sortedAttempts.length ? 'on' : ''}"></i>`).join('');
         const addr = c.serviceAddress || '';
         const goLink = addr
-          ? `<a class="go-btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(addr)}&travelmode=driving">Go</a>`
+          ? `<a class="go-btn" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(addr)}">Go</a>`
           : '';
         const phoneTap = c.phoneNumbers
           ? `<div class="info-card"><div class="k">PHONE</div><div class="v">${linkifyPhones(c.phoneNumbers).replace(/\n/g, '<br>')}</div></div>`
@@ -2544,7 +2543,7 @@
           (c.phoneNumbers ? `<div class="case-notes">📞 ${linkifyPhones(c.phoneNumbers).replace(/\n/g, '<br>')}</div>` : '') +
           `<div>` +
           (c.serviceAddress
-            ? `<a class="btn primary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">Navigate</a> `
+            ? `<a class="btn primary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(c.serviceAddress)}">Navigate</a> `
             : '') +
           `<a class="btn secondary meeting-ics-btn" style="margin-top:.4rem;display:inline-block;" href="/.netlify/functions/meeting-ics?id=${encodeURIComponent(c.id)}&appt=${encodeURIComponent(a.id)}">Add to calendar</a> ` +
           `<button type="button" class="btn secondary meeting-done-btn" style="margin-top:.4rem;">Done</button> ` +
@@ -2794,7 +2793,7 @@
         `<div class="where">Attempts so far: ${n} of 3</div></div>` +
         `<div class="row">` +
         (n < 3 ? `<button type="button" class="btn log-attempt-btn grow" id="todayLogBtn">📍 Log attempt</button>` : `<button type="button" class="btn secondary grow" id="todayOpenBtn">Open case</button>`) +
-        `<a class="nav-btn" aria-label="Navigate" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(c.serviceAddress)}&travelmode=driving">` +
+        `<a class="nav-btn" aria-label="Navigate" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(c.serviceAddress)}">` +
         `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></a>` +
         `</div>`;
       const logBtn = $('#todayLogBtn');

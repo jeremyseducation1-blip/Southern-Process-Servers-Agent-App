@@ -18,9 +18,26 @@
   // used both by the mark-returned prompt and the "Affidavit" button in
   // Search Cases. Defined early (function declarations hoist) since it's
   // used from code defined further down the file.
+  // Court type is a drop-down. Values are stored without the word "Court"
+  // because the affidavit prints "IN THE [value] COURT OF ...". A case that
+  // already holds some other text keeps it (added as an extra option).
+  const COURT_TYPES = [['General Sessions', 'General Sessions'], ['Circuit', 'Circuit Court'], ['Chancery', 'Chancery Court'], ['Juvenile', 'Juvenile Court']];
+  function courtTypeOptions(current) {
+    const cur = (current || '').trim();
+    const known = COURT_TYPES.some(([v]) => v.toLowerCase() === cur.toLowerCase());
+    const opts = COURT_TYPES.map(([v, l]) => [v, l]);
+    if (cur && !known) opts.push([cur, cur]);
+    return opts.map(([v, l]) =>
+      `<option value="${v.replace(/"/g, '&quot;')}"${v.toLowerCase() === cur.toLowerCase() ? ' selected' : ''}>${l.replace(/</g, '&lt;')}</option>`
+    ).join('');
+  }
+  function setCourtType(selectEl, val) {
+    selectEl.innerHTML = courtTypeOptions(val || 'General Sessions');
+  }
+
   function jumpToAffidavit(c) {
     $('#caseNo').value = c.caseNo || '';
-    $('#courtType').value = c.courtType || '';
+    setCourtType($('#courtType'), c.courtType);
     $('#county').value = c.county || '';
     $('#plaintiff').value = c.plaintiff || '';
     $('#defendant').value = c.defendant || '';
@@ -1476,7 +1493,7 @@
           .join(', ');
 
         formEl.innerHTML = `
-          <label>Court type <input type="text" class="edit-courtType" value="${c.courtType || ''}"></label>
+          <label>Court type <select class="edit-courtType">${courtTypeOptions(c.courtType)}</select></label>
           <label>County <input type="text" class="edit-county" value="${c.county || ''}"></label>
           <label>State <input type="text" class="edit-state" value="${c.state || ''}"></label>
           <label>Document type
@@ -1523,7 +1540,7 @@
           const defendants = [primaryDefendant, ...extra].filter(Boolean).map((name) => ({ name, served: false }));
 
           const fields = {
-            courtType: formEl.querySelector('.edit-courtType').value.trim(),
+            courtType: formEl.querySelector('.edit-courtType').value,
             county: formEl.querySelector('.edit-county').value.trim(),
             state: formEl.querySelector('.edit-state').value.trim(),
             caseType: formEl.querySelector('.edit-caseType').value,

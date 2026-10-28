@@ -312,3 +312,8 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .note-meta{font-size:.72rem;color:#4A5B7C;margin-bottom:2px;}
 .app-shell .note-text{white-space:pre-wrap;font-size:.95rem;color:#0B1F44;}
 .app-shell .note-input{width:100%;box-sizing:border-box;border:2px solid #C9D5EE;border-radius:12px;padding:10px 12px;font:inherit;font-size:1rem;}
+
+/* attempt photo thumbnails */
+.app-shell .attempt-thumb-wrap{display:block;margin-top:.5rem;}
+.app-shell .attempt-thumb{display:block;width:100%;max-width:260px;max-height:200px;object-fit:cover;border-radius:12px;background:#E8EEFC;box-shadow:0 1px 4px rgba(11,42,91,.15);-webkit-touch-callout:none;}
+.app-shell .attempt-thumb-hint{font-size:.78rem;font-weight:400;color:#4A5B7C;}

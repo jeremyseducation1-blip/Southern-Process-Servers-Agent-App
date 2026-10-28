@@ -1125,7 +1125,9 @@
                   `<div class="attempt-history-line">#${a.n} — ${a.date || 'no date'}: ${noteText}${photoTs}${gps} ` +
                   (a.photoPath ? `<a href="#" class="view-attempt-photo-link" data-id="${c.id}" data-attempt="${a.n}">📷 View photo</a> · ` : '') +
                   `<a href="#" class="edit-attempt-link" data-id="${c.id}" data-n="${a.n}">Edit</a> · ` +
-                  `<a href="#" class="remove-attempt-link" data-id="${c.id}" data-n="${a.n}">Remove</a></div>`
+                  `<a href="#" class="remove-attempt-link" data-id="${c.id}" data-n="${a.n}">Remove</a>` +
+                  (a.photoPath ? `<a href="#" class="view-attempt-photo-link attempt-thumb-wrap" data-id="${c.id}" data-attempt="${a.n}" aria-label="Open attempt ${a.n} photo"><span class="attempt-thumb-hint">Loading photo…</span></a>` : '') +
+                  `</div>`
                 );
               })
               .join('') +
@@ -1658,17 +1660,18 @@
         e.preventDefault();
         const id = btn.dataset.id;
         const attempt = btn.dataset.attempt;
+        const isThumb = btn.classList.contains('attempt-thumb-wrap');
         const original = btn.textContent;
         if (btn.dataset.busy) return;
         btn.dataset.busy = '1';
-        btn.textContent = 'Opening…';
+        if (!isThumb) btn.textContent = 'Opening…';
         try {
           await showAttemptPhoto(id, attempt);
         } catch (err) {
           alert('Failed to open photo — try again. (' + err.message + ')');
         } finally {
           delete btn.dataset.busy;
-          btn.textContent = original;
+          if (!isThumb) btn.textContent = original;
         }
       });
     });
@@ -2671,6 +2674,7 @@
     const body = row.querySelector('.sheet-body');
     if (body) body.scrollTop = 0;
     if (tab === 'notes') markNotesRead(id);
+    loadAttemptThumbs(row);
     return true;
   }
 
@@ -2696,6 +2700,36 @@
     } catch (_) { /* it will show as new again next time rather than be lost */ }
   }
 
+  // Photos show right in the Attempts list as small pictures (loaded when you
+  // open a case; nothing is saved to the phone). Tap one to see it full size.
+  const thumbLoaded = new Set();
+  async function loadAttemptThumbs(root) {
+    if (!root) return;
+    const wraps = root.querySelectorAll('.attempt-thumb-wrap');
+    for (const w of wraps) {
+      const key = w.dataset.id + ':' + w.dataset.attempt;
+      if (w.querySelector('img') || w.dataset.loading) continue;
+      w.dataset.loading = '1';
+      try {
+        const res = await fetch(`/.netlify/functions/get-attempt-photo?id=${encodeURIComponent(w.dataset.id)}&attempt=${w.dataset.attempt}`);
+        if (!res.ok) throw new Error(await res.text());
+        const { url } = await res.json();
+        const img = document.createElement('img');
+        img.className = 'attempt-thumb';
+        img.alt = `Attempt ${w.dataset.attempt} photo`;
+        img.loading = 'lazy';
+        img.src = url;
+        img.addEventListener('error', () => { w.innerHTML = '<span class="attempt-thumb-hint">Photo could not load — tap to retry</span>'; delete w.dataset.loading; });
+        w.innerHTML = '';
+        w.appendChild(img);
+        thumbLoaded.add(key);
+      } catch (err) {
+        w.innerHTML = '<span class="attempt-thumb-hint">Photo not available (' + esc(err.message).slice(0, 60) + ')</span>';
+        delete w.dataset.loading;
+      }
+    }
+  }
+
   // Called after every render of the Cases list.
   function wireCaseSheets() {
     caseSearchResults.querySelectorAll('[data-open-case]').forEach((el) => {
@@ -2712,6 +2746,7 @@
         const body = sheet.querySelector('.sheet-body');
         if (body) body.scrollTop = 0;
         if (b.dataset.tab === 'notes') markNotesRead(sheet.closest('[data-case-row]').dataset.caseRow);
+        if (b.dataset.tab === 'attempts') loadAttemptThumbs(sheet);
       });
     });
     caseSearchResults.querySelectorAll('.note-add-btn').forEach((btn) => {
@@ -2911,7 +2946,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261105';
+  const ROS_V = '20261106';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

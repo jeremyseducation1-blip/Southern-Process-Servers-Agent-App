@@ -63,9 +63,11 @@ function attorneyLastName(attorney) {
 // of which outcome -- Served, Return Not Found, and Return Requested per
 // Plaintiff all count the same for billing. Per Kevin: everything
 // completed that week gets billed, not just successful service.
-async function buildWeekInvoicePdf(weekKey) {
-  const allCases = await listAllCases();
-
+// One place decides what is billed in a week, so the list on the Invoice
+// page and the PDF can never disagree. Every completed return counts
+// (Served, Return Not Found, Return Requested per Plaintiff alike); only a
+// later defendant on an already-billed case number is listed as "not billable".
+function splitWeek(allCases, weekKey) {
   const firstCompletedDateByCase = new Map();
   allCases.forEach((c) => {
     const bd = billingDate(c);
@@ -98,11 +100,40 @@ async function buildWeekInvoicePdf(weekKey) {
         seenBilledCaseNo.add(c.caseNo);
         billable.push(c);
       } else {
-        // The only thing that's ever NOT billable now: a later defendant
-        // on a case number that was already billed this week or earlier.
         notBillable.push({ c, reason: 'Already billed for this case' });
       }
     });
+  return { billable, notBillable };
+}
+
+// Every week that has at least one completed return, newest first, with the
+// same counts the PDF will show.
+function summarizeWeeks(allCases) {
+  const keys = new Set();
+  allCases.forEach((c) => {
+    const bd = billingDate(c);
+    if (!bd) return;
+    const mon = mondayOfWeek(bd);
+    if (!isNaN(mon.getTime())) keys.add(mon.toISOString().slice(0, 10));
+  });
+  return Array.from(keys).sort((a, b) => (a < b ? 1 : -1)).map((key) => {
+    const { billable, notBillable } = splitWeek(allCases, key);
+    const byOutcome = {};
+    billable.forEach((c) => { const o = c.returnOutcome || 'Served'; byOutcome[o] = (byOutcome[o] || 0) + 1; });
+    return {
+      week: key,
+      label: formatWeekLabel(new Date(key + 'T00:00:00')),
+      billableCount: billable.length,
+      notBillableCount: notBillable.length,
+      total: billable.length * RATE_PER_CASE,
+      byOutcome
+    };
+  });
+}
+
+async function buildWeekInvoicePdf(weekKey) {
+  const allCases = await listAllCases();
+  const { billable, notBillable } = splitWeek(allCases, weekKey);
 
   const total = billable.length * RATE_PER_CASE;
 
@@ -209,4 +240,4 @@ async function buildWeekInvoicePdf(weekKey) {
   };
 }
 
-module.exports = { buildWeekInvoicePdf, mondayOfWeek, formatWeekLabel, formatMoney };
+module.exports = { buildWeekInvoicePdf, summarizeWeeks, splitWeek, mondayOfWeek, formatWeekLabel, formatMoney };

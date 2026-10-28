@@ -568,3 +568,8 @@ Each case has a **Notes** tab: a running, append-only log (who, when, what). Not
 - **Jeremy** sees new notes on the **Today** tab (a "New notes" card plus a number badge on the tab) and replies from the case's Notes tab. Opening the tab marks them read.
 - **Notification:** every note from Kevin is also emailed to `NOTIFY_EMAIL` (optional; defaults to `GMAIL_SENDER_EMAIL`) using the existing Gmail settings, so it arrives as a normal phone notification. Real push notifications would need the app installed to the Home Screen as a web app — a possible later step.
 - Functions: `add-note` (Kevin via ALL-scope token, Jeremy via login), `mark-notes-read`; `view-cases` includes notes only for ALL-scope links.
+
+## Routes reset daily; invoice week counts
+
+- A route belongs to the day it was built (Central time). Anything left from an earlier day is dropped, so each morning starts from zero. **End route & start a new one** (Route tab) or **End route** (Today's Next-stop card) clears it mid-day, e.g. a morning route then a different afternoon route. Logged attempts are untouched.
+- The weekly invoice list is counted by the server with the same code that builds each week's PDF (`week-invoice-summary`), so the number on the button always equals the invoice. All completed outcomes count, including Return Requested per Plaintiff.

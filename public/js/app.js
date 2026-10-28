@@ -522,12 +522,28 @@
   const routeCount = $('#routeCount');
   let routeCases = [];
   let routeOrder = []; // case ids, in the order tapped
-  try {
-    const saved = JSON.parse(localStorage.getItem('sps_routeOrder') || '[]');
-    if (Array.isArray(saved)) routeOrder = saved;
-  } catch (_) { /* storage unavailable -- order just won't survive a reload */ }
+  // A route belongs to the day it was built (Central time). Anything left over
+  // from an earlier day is dropped, so every morning starts from zero.
+  const routeToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  function readSavedRoute() {
+    try {
+      if (localStorage.getItem('sps_routeDate') !== routeToday()) return [];
+      const saved = JSON.parse(localStorage.getItem('sps_routeOrder') || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch (_) { return []; }
+  }
+  routeOrder = readSavedRoute();
   function saveRouteOrder() {
-    try { localStorage.setItem('sps_routeOrder', JSON.stringify(routeOrder)); } catch (_) { /* ignore */ }
+    try {
+      localStorage.setItem('sps_routeOrder', JSON.stringify(routeOrder));
+      localStorage.setItem('sps_routeDate', routeToday());
+    } catch (_) { /* ignore */ }
+  }
+  // Called when the app comes back to the foreground (e.g. overnight).
+  function dropStaleRoute() {
+    let stale = false;
+    try { stale = !!localStorage.getItem('sps_routeOrder') && localStorage.getItem('sps_routeDate') !== routeToday(); } catch (_) { /* ignore */ }
+    if (stale) { routeOrder = []; saveRouteOrder(); if (routeCases.length) renderRoute(); }
   }
 
   function renderRoute() {
@@ -619,10 +635,13 @@
     }
   });
 
+  // End the route (finished or not) so the next one starts clean -- e.g. a
+  // morning route and a different afternoon route. Attempts already logged stay.
   $('#clearRouteBtn').addEventListener('click', () => {
     routeOrder = [];
     saveRouteOrder();
     renderRoute();
+    if (typeof refreshSchedule === 'function') refreshSchedule();
   });
 
   // Multi-stop link for Apple Maps: repeated daddr= params, starting from
@@ -955,46 +974,25 @@
     loadWeekInvoiceBtn.disabled = true;
     weekInvoiceList.innerHTML = '<p class="hint">Loading…</p>';
     try {
-      const res = await fetch('/.netlify/functions/list-cases');
+      // The server counts each week with the same code that builds the PDF,
+      // so the number here always matches the invoice (every completed
+      // return counts: Served, Return Not Found and Return Requested per
+      // Plaintiff alike; given-to-another-agent never does).
+      const res = await fetch('/.netlify/functions/week-invoice-summary');
       if (!res.ok) throw new Error(await res.text());
-      const { cases } = await res.json();
-      // Invoice week follows the day it was entered in the app
-      // (completedDate), not a backdated return date.
-      const billDate = (c) => c.completedDate || c.returnDate;
-      const returned = (cases || []).filter((c) => billDate(c));
-
-      if (!returned.length) {
+      const { weeks } = await res.json();
+      if (!weeks || !weeks.length) {
         weekInvoiceList.innerHTML = '<p class="hint">Nothing returned yet.</p>';
         return;
       }
-
-      // Counts every completed return that actually appears on that
-      // week's PDF -- billable AND the "already billed for this case"
-      // duplicates -- since the PDF lists all of them, not just the
-      // billable subset. Billing itself still dedupes by case number
-      // (see buildWeekInvoicePdf.js) -- this count is "how many returns
-      // happened," not "how many dollars," so it should match the total
-      // line count on the page, not just the $ total.
-      const groups = new Map(); // key: monday ISO date, value: { label, count }
-      returned.forEach((c) => {
-        const monday = mondayOfWeek(billDate(c));
-        const key = monday.toISOString().slice(0, 10);
-        if (!groups.has(key)) {
-          groups.set(key, { label: formatWeekLabel(monday), count: 0 });
-        }
-        groups.get(key).count += 1;
-      });
-
-      const sortedKeys = Array.from(groups.keys()).sort((a, b) => (a < b ? 1 : -1));
-
-      const html = sortedKeys
-        .map((key) => {
-          const group = groups.get(key);
-          const caseWord = group.count === 1 ? 'return' : 'returns';
+      const html = weeks
+        .map((w) => {
+          const parts = Object.keys(w.byOutcome || {}).map((o) => `${w.byOutcome[o]} ${o}`).join(' · ');
+          const rep = w.notBillableCount ? ` · ${w.notBillableCount} repeat${w.notBillableCount === 1 ? '' : 's'} not billed` : '';
           return (
-            `<button type="button" class="week-btn" data-week="${key}">` +
-            `<span class="week-btn-label">${group.label}</span>` +
-            `<span class="week-btn-count">${group.count} ${caseWord} &rsaquo;</span>` +
+            `<button type="button" class="week-btn" data-week="${esc(w.week)}">` +
+            `<span class="week-btn-label">${esc(w.label)}<small style="display:block;font-weight:400;opacity:.8;">${esc(parts)}${esc(rep)}</small></span>` +
+            `<span class="week-btn-count">${w.billableCount} ${w.billableCount === 1 ? 'return' : 'returns'} · $${w.total} &rsaquo;</span>` +
             `</button>`
           );
         })
@@ -2636,7 +2634,7 @@
   // The first thing you see when you open the app.
   refreshSchedule();
   // Coming back to the app (or every few minutes while it's open) picks up new notes.
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshSchedule(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { dropStaleRoute(); refreshSchedule(); } });
   setInterval(() => { if (document.visibilityState === 'visible' && !document.body.classList.contains('sheet-open')) refreshSchedule(); }, 180000);
 
   // ====================== App shell: tabs, Today, case page ======================
@@ -2873,7 +2871,9 @@
 
     // Next stop: first case in your saved route order with no attempt today.
     let order = [];
-    try { order = JSON.parse(localStorage.getItem('sps_routeOrder') || '[]'); } catch (e) { order = []; }
+    try {
+      order = localStorage.getItem('sps_routeDate') === routeToday() ? JSON.parse(localStorage.getItem('sps_routeOrder') || '[]') : [];
+    } catch (e) { order = []; }
     const stops = order.map((id) => (cases || []).find((c) => c.id === id)).filter((c) => c && c.status !== 'closed' && c.serviceAddress);
     const nextIdx = stops.findIndex((c) => !(c.attempts || []).some((a) => a.date === now.date));
     const card = $('#nextStopCard');
@@ -2881,8 +2881,11 @@
       card.innerHTML =
         `<div class="eyebrow">NEXT STOP</div>` +
         `<div class="where">${stops.length ? 'Every stop on your route has an attempt today.' : 'No route planned yet.'}</div>` +
-        `<div class="row"><button type="button" class="btn secondary grow" id="planRouteBtn">${stops.length ? 'View route' : 'Plan today\'s route'}</button></div>`;
+        `<div class="row"><button type="button" class="btn secondary grow" id="planRouteBtn">${stops.length ? 'View route' : 'Plan today\'s route'}</button>` +
+        (stops.length ? `<button type="button" class="btn secondary" id="endRouteBtn">End route</button>` : '') + `</div>`;
       $('#planRouteBtn').addEventListener('click', () => showView('route'));
+      const endBtn0 = $('#endRouteBtn');
+      if (endBtn0) endBtn0.addEventListener('click', () => { routeOrder = []; saveRouteOrder(); refreshSchedule(); });
     } else {
       const c = stops[nextIdx];
       const n = (c.attempts || []).length;
@@ -2894,7 +2897,8 @@
         (n < 3 ? `<button type="button" class="btn log-attempt-btn grow" id="todayLogBtn">📍 Log attempt</button>` : `<button type="button" class="btn secondary grow" id="todayOpenBtn">Open case</button>`) +
         `<a class="nav-btn" aria-label="Navigate" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(c.serviceAddress)}">` +
         `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l18-8-8 18-2-8z"/></svg></a>` +
-        `</div>`;
+        `</div><div class="row"><button type="button" class="btn secondary grow" id="endRouteBtn">End route (start a new one)</button></div>`;
+      $('#endRouteBtn').addEventListener('click', () => { routeOrder = []; saveRouteOrder(); refreshSchedule(); });
       const logBtn = $('#todayLogBtn');
       if (logBtn) logBtn.addEventListener('click', () => openCasePage(c.id, { autoLog: true }));
       const openBtn = $('#todayOpenBtn');
@@ -2907,7 +2911,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261104';
+  const ROS_V = '20261105';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

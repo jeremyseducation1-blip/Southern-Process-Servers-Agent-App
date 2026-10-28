@@ -1569,8 +1569,8 @@
 
         formEl.innerHTML = `
           <label>Court type <select class="edit-courtType">${courtTypeOptions(c.courtType)}</select></label>
-          <label>County <input type="text" class="edit-county" value="${c.county || ''}"></label>
-          <label>State <input type="text" class="edit-state" value="${c.state || ''}"></label>
+          <label>County <input type="text" class="edit-county" value="${esc(c.county || '')}"></label>
+          <label>State <input type="text" class="edit-state" value="${esc(c.state || '')}"></label>
           <label>Document type
             <select class="edit-caseType">
               <option value="" ${!c.caseType ? 'selected' : ''}>Select type</option>
@@ -1581,15 +1581,15 @@
               <option value="Subpoena" ${c.caseType === 'Subpoena' ? 'selected' : ''}>Subpoena</option>
             </select>
           </label>
-          <label>Plaintiff <input type="text" class="edit-plaintiff" value="${c.plaintiff || ''}"></label>
-          <label>Defendant <input type="text" class="edit-defendant" value="${c.defendant || ''}"></label>
-          <label>Additional defendants (comma-separated) <input type="text" class="edit-extraDefendants" value="${extraDefendants}"></label>
-          <label>Court date (change it here if the court moves it) <input type="date" class="edit-courtDate" value="${c.courtDate || ''}"></label>
-          <label>Issued on (date on the summons/warrant) <input type="date" class="edit-issueDate" value="${c.issueDate || ''}"></label>
-          <label>Service address <input type="text" class="edit-serviceAddress" value="${c.serviceAddress || ''}"></label>
-          <label>Attorney <input type="text" class="edit-attorney" value="${c.attorney || ''}"></label>
-          <label>Special notes <textarea class="edit-notes" rows="3">${c.notes || ''}</textarea></label>
-          <label>Phone numbers <textarea class="edit-phoneNumbers" rows="2">${c.phoneNumbers || ''}</textarea></label>
+          <label>Plaintiff <input type="text" class="edit-plaintiff" value="${esc(c.plaintiff || '')}"></label>
+          <label>Defendant <input type="text" class="edit-defendant" value="${esc(c.defendant || '')}"></label>
+          <label>Additional defendants (comma-separated) <input type="text" class="edit-extraDefendants" value="${esc(extraDefendants)}"></label>
+          <label>Court date (change it here if the court moves it) <input type="date" class="edit-courtDate" value="${esc(c.courtDate || '')}"></label>
+          <label>Issued on (date on the summons/warrant) <input type="date" class="edit-issueDate" value="${esc(c.issueDate || '')}"></label>
+          <label>Service address <input type="text" class="edit-serviceAddress" value="${esc(c.serviceAddress || '')}"></label>
+          <label>Attorney <input type="text" class="edit-attorney" value="${esc(c.attorney || '')}"></label>
+          <label>Special notes <textarea class="edit-notes" rows="3">${esc(c.notes || '')}</textarea></label>
+          <label>Phone numbers <textarea class="edit-phoneNumbers" rows="2">${esc(c.phoneNumbers || '')}</textarea></label>
           <label><input type="checkbox" class="edit-isAlias" ${c.isAlias ? 'checked' : ''}> This is an alias summons</label>
           <div class="sig-actions">
             <button type="button" class="btn primary save-edit-btn">Save changes</button>
@@ -1612,7 +1612,15 @@
             .value.split(',')
             .map((s) => s.trim())
             .filter(Boolean);
-          const defendants = [primaryDefendant, ...extra].filter(Boolean).map((name) => ({ name, served: false }));
+          // Keep what's already recorded for each defendant (served status,
+          // return date, PDF) -- only brand-new names start unserved.
+          const oldByName = new Map((c.defendants || []).map((d) => [String(d.name || '').trim().toLowerCase(), d]));
+          const defendants = [primaryDefendant, ...extra].filter(Boolean).map((name, i) => {
+            let prev = oldByName.get(name.toLowerCase());
+            // Fixing the spelling of the main defendant's name keeps that person's record.
+            if (!prev && i === 0) prev = oldByName.get(String(c.defendant || '').trim().toLowerCase());
+            return prev ? { ...prev, name } : { name, served: false };
+          });
 
           const fields = {
             courtType: formEl.querySelector('.edit-courtType').value,
@@ -2996,7 +3004,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261108';
+  const ROS_V = '20261109';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

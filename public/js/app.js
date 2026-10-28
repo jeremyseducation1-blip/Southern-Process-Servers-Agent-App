@@ -2456,7 +2456,7 @@
   function linkifyPhones(text) {
     return esc(text).replace(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g, (m) => {
       const digits = m.replace(/\D/g, '');
-      return digits.length >= 10 ? `<a href="tel:${digits}">${m}</a>` : m;
+      return digits.length >= 10 ? `<a href="tel:${digits}">${m}</a> <a class="text-link" href="sms:${digits}">💬 Text</a>` : m;
     });
   }
 
@@ -2946,7 +2946,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261106';
+  const ROS_V = '20261107';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

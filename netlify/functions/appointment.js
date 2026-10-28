@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase } = require('./lib/caseStore');
 
 // Scheduled meetings with a defendant ("be at 1338 Sula Dr at 10:00 AM
@@ -19,7 +20,7 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' };
 
   try {
@@ -79,4 +80,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to save meeting' };
   }
-};
+});

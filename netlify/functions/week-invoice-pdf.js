@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { buildWeekInvoicePdf } = require('./lib/buildWeekInvoicePdf');
 const { saveInvoiceRecord } = require('./lib/invoiceStore');
 
@@ -5,7 +6,7 @@ const { saveInvoiceRecord } = require('./lib/invoiceStore');
 // Uses the same builder as the automatic Friday email, and logs itself
 // the same way, so every invoice -- generated on demand or automatically
 // -- ends up in "My Invoices" / Kevin's view either way.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -35,4 +36,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to build weekly invoice' };
   }
-};
+});

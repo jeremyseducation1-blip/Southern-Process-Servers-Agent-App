@@ -1,7 +1,8 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase } = require('./lib/caseStore');
 const { todayCentral, HANDOFF } = require('./lib/billingDate');
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -70,4 +71,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to update case' };
   }
-};
+});

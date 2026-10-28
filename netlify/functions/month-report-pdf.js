@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { listAllCases } = require('./lib/caseStore');
 
@@ -7,7 +8,7 @@ function formatMonthLabel(monthKey) {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -83,4 +84,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to build monthly report' };
   }
-};
+});

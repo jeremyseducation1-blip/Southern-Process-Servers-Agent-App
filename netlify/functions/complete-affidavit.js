@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { buildAffidavitPdf } = require('./lib/buildAffidavitPdf');
 const { sendGmail } = require('./lib/sendGmail');
 const { getCase, putCase, makePaperId, getActivePaperByCaseAndDefendant } = require('./lib/caseStore');
@@ -34,7 +35,7 @@ function validate({ attempts, status, signatureDataUrl, fewerAttemptsOverride })
   return null;
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -164,4 +165,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Send failed' };
   }
-};
+});

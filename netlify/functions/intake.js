@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { putCase, getCase, makePaperId } = require('./lib/caseStore');
 
 // Fires the moment a paper is received, before any attempts are made.
@@ -12,7 +13,7 @@ function validDate(v) {
   return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -90,4 +91,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Intake failed' };
   }
-};
+});

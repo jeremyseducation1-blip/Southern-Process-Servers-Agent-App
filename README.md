@@ -554,3 +554,8 @@ Route tab: save a **home address**, build the route, and "Open route in Maps" no
 
 ## Fill in from scanned papers
 New case → **Choose scanned PDFs** reads Genius Scan PDFs of the court's *Return of Service* sheet **on the phone** (OCR via self-hosted tesseract.js + pdf.js in `public/vendor/`; nothing is uploaded to be read, no API key). Each page becomes one case card (docket no., plaintiff, defendant, address, phone, county, court type) to check and save; the docket's grey print gets a second zoomed-in pass if the first misses it. Attorney is suggested from earlier cases with the same plaintiff, else from the file name tag (`Name-Fox.pdf` → Fox). `public/js/rosParser.js` is the text parser.
+
+## Login + AI paper reading (needs Netlify settings)
+**Login:** set `APP_PASSWORD` in Netlify (Site configuration → Environment variables). Until it's set the app stays open as before; once set, every function except the share-link pages requires a signed-in device (60 days). Optional `AUTH_SECRET` signs tokens. Changing the password signs everyone out.
+
+**AI reading (any form):** set `ANTHROPIC_API_KEY` (create a dedicated key in the Anthropic console and put a monthly spend limit on it). Optional `ANTHROPIC_MODEL` (default `claude-sonnet-5-5`). New case → *Choose scanned PDFs* sends the page images to `read-paper-start` → background function `read-paper-background` calls Claude (forced tool call → structured fields) → `read-paper-result`. Page images and results are deleted from the private `readings` bucket as soon as the app picks them up (anything left is purged after a day). The AI endpoints refuse to run unless the login is configured. If the key or login isn't set up, or the AI call fails, the app falls back to the free on-phone reader.

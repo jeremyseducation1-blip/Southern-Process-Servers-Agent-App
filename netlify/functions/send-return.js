@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { sendGmail } = require('./lib/sendGmail');
 const { getCase, putCase } = require('./lib/caseStore');
 const { uploadReturnPdf } = require('./lib/returnStorage');
@@ -23,7 +24,7 @@ function buildSubject(c) {
 // attaches it to the case and marks it returned. The email goes first on
 // purpose: if Gmail fails (expired token, etc.) nothing gets marked, so a
 // case can never show "returned" without Kevin actually having the paper.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -117,4 +118,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to send return' };
   }
-};
+});

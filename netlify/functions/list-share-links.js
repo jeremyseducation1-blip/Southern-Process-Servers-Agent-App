@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { createClient } = require('@supabase/supabase-js');
 
 function client() {
@@ -7,7 +8,7 @@ function client() {
   return createClient(url, key, { auth: { persistSession: false } });
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -27,4 +28,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to list share links' };
   }
-};
+});

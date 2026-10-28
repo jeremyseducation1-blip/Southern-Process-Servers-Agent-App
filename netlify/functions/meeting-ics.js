@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase } = require('./lib/caseStore');
 
 // "Add to calendar" -- GET ?id=<caseId>&appt=<appointmentId> returns a .ics
@@ -7,7 +8,7 @@ const { getCase } = require('./lib/caseStore');
 const esc = (s) => String(s || '').replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
 const stamp = (d, t) => d.replace(/-/g, '') + 'T' + t.replace(':', '') + '00';
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') return { statusCode: 405, body: 'Method not allowed' };
   try {
     const { id, appt } = event.queryStringParameters || {};
@@ -52,4 +53,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to build calendar file' };
   }
-};
+});

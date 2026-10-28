@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase, makePaperId, getActivePaperByCaseAndDefendant } = require('./lib/caseStore');
 const { uploadReturnPdf } = require('./lib/returnStorage');
 const { todayCentral } = require('./lib/billingDate');
@@ -6,7 +7,7 @@ const { todayCentral } = require('./lib/billingDate');
 // Deliberately does NOT send any email. Kevin no longer gets notified by
 // this step at all; the app is just recording that the paper came back,
 // same as intake just records that a paper arrived.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -90,4 +91,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to attach return' };
   }
-};
+});

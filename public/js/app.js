@@ -2825,7 +2825,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261102';
+  const ROS_V = '20261103';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();
@@ -2836,13 +2836,22 @@
       document.head.appendChild(s);
     });
   }
+  let pdfLibPromise = null;
+  function getPdfLib() {
+    if (!pdfLibPromise) {
+      pdfLibPromise = loadScriptOnce('/vendor/pdf.min.js?v=' + ROS_V).then(() => {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js?v=' + ROS_V;
+      });
+      pdfLibPromise.catch(() => { pdfLibPromise = null; });
+    }
+    return pdfLibPromise;
+  }
   let ocrWorkerPromise = null;
   function getOcrWorker() {
     if (!ocrWorkerPromise) {
       ocrWorkerPromise = (async () => {
-        await loadScriptOnce('/vendor/pdf.min.js?v=' + ROS_V);
+        await getPdfLib();
         await loadScriptOnce('/vendor/tesseract/tesseract.min.js?v=' + ROS_V);
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = '/vendor/pdf.worker.min.js?v=' + ROS_V;
         return window.Tesseract.createWorker('eng', 1, {
           workerPath: '/vendor/tesseract/worker.min.js',
           corePath: '/vendor/tesseract/',
@@ -2856,6 +2865,7 @@
   }
 
   async function pdfToCanvases(file) {
+    await getPdfLib();
     const pdf = await window.pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
     const out = [];
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -2914,6 +2924,64 @@
     return found;
   }
 
+
+  // Reads a PDF with the AI reader (works on any form). Returns null when the
+  // AI reader isn't set up, so the caller can use the free on-phone reader.
+  function canvasToJpeg(canvas, maxW, q) {
+    let c = canvas;
+    if (canvas.width > maxW) {
+      c = document.createElement('canvas');
+      c.width = maxW; c.height = Math.round(canvas.height * (maxW / canvas.width));
+      c.getContext('2d').drawImage(canvas, 0, 0, c.width, c.height);
+    }
+    return c.toDataURL('image/jpeg', q);
+  }
+  async function readPdfWithAI(file, onStatus) {
+    const canvases = await pdfToCanvases(file);
+    let images = canvases.map((c) => canvasToJpeg(c, 1600, 0.8));
+    if (images.join('').length > 4.2e6) images = canvases.map((c) => canvasToJpeg(c, 1300, 0.65));
+    onStatus('Reading with the AI reader…');
+    const start = await fetch('/.netlify/functions/read-paper-start', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images })
+    });
+    if (!start.ok) {
+      const msg = await start.text();
+      if (/AI_NOT_CONFIGURED|LOGIN_NOT_CONFIGURED/.test(msg)) return null;
+      throw new Error(msg);
+    }
+    const { jobId } = await start.json();
+    const t0 = Date.now();
+    while (Date.now() - t0 < 150000) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const res = await fetch('/.netlify/functions/read-paper-result?id=' + encodeURIComponent(jobId));
+      if (!res.ok) throw new Error(await res.text());
+      const r = await res.json();
+      if (r.status === 'error') throw new Error(r.message || 'The AI reader failed.');
+      if (r.status === 'done') {
+        return r.papers.map((p) => ({
+          docket: p.caseNo, plaintiff: p.plaintiff, defendant: p.defendant, serviceAddress: p.serviceAddress,
+          phone: p.phoneNumbers, county: p.county, courtType: p.courtType, caseType: p.caseType,
+          courtDate: p.courtDate, issueDate: p.issueDate, attorney: p.attorney, notes: p.notes,
+          uncertain: p.uncertain || [], warnings: p.caseNo ? [] : ['Could not find a case number — type it in.'],
+          sourceFile: file.name, page: 1, pageCount: 1
+        }));
+      }
+    }
+    throw new Error('The AI reader took too long.');
+  }
+  async function readOnePdf(file, onStatus) {
+    try {
+      const viaAI = await readPdfWithAI(file, onStatus);
+      if (viaAI) return viaAI;
+    } catch (err) {
+      if (/AUTH_REQUIRED/.test(err.message)) throw err;
+      const recs = await readPdfFile(file, (p, n) => onStatus('The AI reader had a problem, using the on-phone reader' + (n > 1 ? ` (page ${p} of ${n})` : '') + '…'));
+      recs.forEach((r) => r.warnings.unshift('Read with the backup reader (' + err.message.slice(0, 80) + ') — check everything.'));
+      return recs;
+    }
+    return readPdfFile(file, (p, n) => onStatus('Reading on your phone' + (n > 1 ? ` (page ${p} of ${n})` : '') + '…'));
+  }
+
   // "Pamela_Works-Fox.pdf" -> "Fox" (your own filing tag: the attorney)
   function attorneyFromFileName(name) {
     const m = /-([A-Za-z][A-Za-z .']{1,30})\.pdf$/i.exec(name || '');
@@ -2922,7 +2990,9 @@
 
   function rosCardHtml(r, idx, knownAttorney, dupe) {
     const e = esc;
-    const warn = r.warnings.length ? `<p class="status err">${e(r.warnings.join(' '))}</p>` : '';
+    const unsure = (r.uncertain || []).length ? ` Double-check: ${(r.uncertain || []).join(', ')}.` : '';
+    const warnAll = (r.warnings || []).join(' ') + unsure;
+    const warn = warnAll.trim() ? `<p class="status err">${e(warnAll.trim())}</p>` : '';
     const dupeNote = dupe ? `<p class="status err">This case number and defendant are already logged and still open.</p>` : '';
     return `<div class="case-row ros-card" data-ros="${idx}">` +
       `<div class="case-style">${e(r.defendant || 'Unknown defendant')}</div>` +
@@ -2934,12 +3004,13 @@
       `<label>Service address <input type="text" class="ros-address" value="${e(r.serviceAddress)}"></label>` +
       `<label>Phone number(s) <input type="text" class="ros-phone" value="${e(r.phone)}"></label>` +
       `<label>Attorney of record <input type="text" class="ros-attorney" value="${e(knownAttorney)}" placeholder="Leave blank if you don't know"></label>` +
-      `<details class="ros-more"><summary>Court, county, dates (optional)</summary>` +
+      `<details class="ros-more"${r.courtDate || r.issueDate || r.notes ? ' open' : ''}><summary>Court, county, dates (optional)</summary>` +
       `<label>Court type <select class="ros-court">${courtTypeOptions(r.courtType || 'General Sessions')}</select></label>` +
       `<label>County <input type="text" class="ros-county" value="${e(r.county)}"></label>` +
       `<label>Document type <select class="ros-caseType">${$('#caseType').innerHTML}</select></label>` +
-      `<label>Court date (if the paper has one) <input type="date" class="ros-courtDate"></label>` +
-      `<label>Issued on (date printed on the paper) <input type="date" class="ros-issueDate"></label>` +
+      `<label>Court date (if the paper has one) <input type="date" class="ros-courtDate" value="${e(r.courtDate || '')}"></label>` +
+      `<label>Issued on (date printed on the paper) <input type="date" class="ros-issueDate" value="${e(r.issueDate || '')}"></label>` +
+      `<label>Notes <textarea class="ros-notes" rows="2">${e(r.notes || '')}</textarea></label>` +
       `</details>` +
       `<button type="button" class="btn primary ros-save-btn">Save this case</button>` +
       `<p class="status ros-status"></p>` +
@@ -2969,7 +3040,7 @@
           defendant, defendants: [{ name: defendant, served: false }],
           serviceAddress: q('.ros-address').value.trim(),
           courtDate: q('.ros-courtDate').value || null, issueDate: q('.ros-issueDate').value || null,
-          attorney, notes: '', phoneNumbers: q('.ros-phone').value.trim(), isAlias
+          attorney, notes: q('.ros-notes').value.trim(), phoneNumbers: q('.ros-phone').value.trim(), isAlias
         } })
       });
       if (!res.ok) throw new Error(await res.text());
@@ -2999,8 +3070,8 @@
     try {
       for (let f = 0; f < files.length; f++) {
         try {
-          const recs = await readPdfFile(files[f], (p, n) => {
-            rosStatus.textContent = `Reading file ${f + 1} of ${files.length}` + (n > 1 ? `, page ${p} of ${n}` : '') + '… (first time takes a bit longer)';
+          const recs = await readOnePdf(files[f], (msg) => {
+            rosStatus.textContent = `File ${f + 1} of ${files.length}: ${msg}`;
           });
           records.push(...recs);
         } catch (err) {
@@ -3016,9 +3087,15 @@
       rosResults.innerHTML = records.map((r, i) => {
         const dupe = known.some((c) => c.status === 'open' && String(c.caseNo).toUpperCase() === String(r.docket).toUpperCase() &&
           String(c.defendant || '').toLowerCase() === String(r.defendant || '').toLowerCase());
-        const atty = attyByPlaintiff.get((r.plaintiff || '').toLowerCase()) || attorneyFromFileName(r.sourceFile);
+        const atty = r.attorney || attyByPlaintiff.get((r.plaintiff || '').toLowerCase()) || attorneyFromFileName(r.sourceFile);
         return rosCardHtml(r, i, atty, dupe);
       }).join('') + (records.length > 1 ? `<button type="button" class="btn primary" id="rosSaveAllBtn">Save all ${records.length} cases</button>` : '');
+      records.forEach((r, i) => {
+        const card = rosResults.querySelector(`.ros-card[data-ros="${i}"]`);
+        if (card && r.caseType) card.querySelector('.ros-caseType').value = r.caseType;
+        const map = { caseNo: 'caseNo', plaintiff: 'plaintiff', defendant: 'defendant', serviceAddress: 'address', address: 'address', courtDate: 'courtDate', issueDate: 'issueDate', phoneNumbers: 'phone', attorney: 'attorney', county: 'county' };
+        (r.uncertain || []).forEach((f) => { const el = card && map[f] && card.querySelector('.ros-' + map[f]); if (el) el.style.outline = '2px solid #FFC72C'; });
+      });
       rosResults.querySelectorAll('.ros-save-btn').forEach((b) => b.addEventListener('click', () => saveRosCard(b.closest('.ros-card'))));
       const all = $('#rosSaveAllBtn');
       if (all) all.addEventListener('click', async () => {

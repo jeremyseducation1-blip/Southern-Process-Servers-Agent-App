@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase } = require('./lib/caseStore');
 const { todayCentral, HANDOFF } = require('./lib/billingDate');
 
@@ -6,7 +7,7 @@ const { todayCentral, HANDOFF } = require('./lib/billingDate');
 // defendants are marked served or whether the case is closed. Those were
 // already handled correctly when the return was first marked; this is
 // just correcting the record, not re-doing the mark.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -54,4 +55,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to edit return' };
   }
-};
+});

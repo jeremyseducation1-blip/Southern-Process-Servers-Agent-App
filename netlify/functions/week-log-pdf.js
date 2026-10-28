@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { listAllCases } = require('./lib/caseStore');
 const { wrapLines } = require('./lib/pdfText');
@@ -38,7 +39,7 @@ function formatWeekLabel(monday) {
   return `Week of ${monday.toLocaleDateString('en-US', opts)}`;
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -119,4 +120,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to build week log PDF' };
   }
-};
+});

@@ -1,10 +1,11 @@
+const { requireAuth } = require('./lib/auth');
 const { readStore, writeStore } = require('./lib/mileageStore');
 
 // GET                      -> { home, trips }
 // POST {action:'home', home}
 // POST {action:'save', date, miles, stops[], note, estimated}
 // POST {action:'delete', id}
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     if (event.httpMethod === 'GET') {
       return { statusCode: 200, body: JSON.stringify(await readStore()) };
@@ -41,4 +42,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Mileage request failed' };
   }
-};
+});

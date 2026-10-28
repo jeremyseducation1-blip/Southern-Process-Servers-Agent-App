@@ -1,9 +1,10 @@
+const { requireAuth } = require('./lib/auth');
 const { buildInventoryPdf } = require('./lib/buildInventoryPdf');
 
 // On-demand twin of weekly-inventory.js's automatic Sunday email -- same
 // builder, generated as a downloadable PDF right now, whenever it's
 // tapped, no email involved.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -19,4 +20,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to build inventory' };
   }
-};
+});

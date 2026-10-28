@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { buildAffidavitPdf } = require('./lib/buildAffidavitPdf');
 
 // Same validation as complete-affidavit -- a preview should only be
@@ -28,7 +29,7 @@ function validate({ attempts, status, signatureDataUrl, fewerAttemptsOverride })
   return null;
 }
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -51,4 +52,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Preview failed' };
   }
-};
+});

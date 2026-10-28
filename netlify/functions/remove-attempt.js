@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase } = require('./lib/caseStore');
 
 // Removes one logged attempt from a case (wrong tap, duplicate, wrong
@@ -6,7 +7,7 @@ const { getCase, putCase } = require('./lib/caseStore');
 // The GPS visit log is append-only, so the underlying visit is NOT erased:
 // it's flagged `removed` with a timestamp, which keeps an honest record of
 // what happened while letting a fresh "Log attempt" tap work right away.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' };
 
   try {
@@ -35,4 +36,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to remove attempt' };
   }
-};
+});

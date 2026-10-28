@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase } = require('./lib/caseStore');
 
 // For cases where the affidavit was already handled outside this app
@@ -5,7 +6,7 @@ const { getCase, putCase } = require('./lib/caseStore');
 // just acknowledges that and closes the case out. It does NOT generate
 // a PDF or send any email; it's purely a record-keeping correction so
 // the case comes off the open-case inventory.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -28,4 +29,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to mark affidavit sent' };
   }
-};
+});

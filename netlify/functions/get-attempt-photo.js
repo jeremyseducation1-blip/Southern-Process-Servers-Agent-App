@@ -1,7 +1,8 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase } = require('./lib/caseStore');
 const { getAttemptPhotoUrl } = require('./lib/returnStorage');
 
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -27,4 +28,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to get photo' };
   }
-};
+});

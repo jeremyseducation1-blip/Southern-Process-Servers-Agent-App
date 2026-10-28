@@ -1,10 +1,11 @@
+const { requireAuth } = require('./lib/auth');
 const { readStore } = require('./lib/mileageStore');
 
 const IRS_RATE = { 2026: 0.725, 2025: 0.70, 2024: 0.67 }; // $/mile, IRS standard business rate
 const q = (v) => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
 
 // GET ?year=2026 -> CSV of business trips for that year (for the accountant).
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   try {
     const year = (event.queryStringParameters && event.queryStringParameters.year) || '';
     const { trips } = await readStore();
@@ -32,4 +33,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to build CSV' };
   }
-};
+});

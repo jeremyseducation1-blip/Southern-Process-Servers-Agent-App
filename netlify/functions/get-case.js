@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCasesByCaseNo, getActivePaperByCaseAndDefendant } = require('./lib/caseStore');
 
 // Case numbers repeat, so this looks up one specific paper by case number
@@ -5,7 +6,7 @@ const { getCasesByCaseNo, getActivePaperByCaseAndDefendant } = require('./lib/ca
 // always has a specific defendant in mind). With just a case number, it
 // returns the first matching row -- good enough for the "does this case
 // exist yet" convenience check the Return section also uses.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'GET') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -28,4 +29,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to load case' };
   }
-};
+});

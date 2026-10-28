@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase, makePaperId, getActivePaperByCaseAndDefendant } = require('./lib/caseStore');
 const { uploadAttemptPhoto } = require('./lib/returnStorage');
 
@@ -6,7 +7,7 @@ const { uploadAttemptPhoto } = require('./lib/returnStorage');
 // into a form right before generating the affidavit. Saved immediately
 // when the photo's taken, so it's on record even if the case never gets
 // as far as a completed affidavit.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method not allowed' };
   }
@@ -60,4 +61,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to save attempt' };
   }
-};
+});

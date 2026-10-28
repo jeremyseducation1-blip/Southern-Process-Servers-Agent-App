@@ -1,3 +1,4 @@
+const { requireAuth } = require('./lib/auth');
 const { getCase, putCase } = require('./lib/caseStore');
 const { todayCentral } = require('./lib/billingDate');
 
@@ -10,7 +11,7 @@ const { todayCentral } = require('./lib/billingDate');
 // Every tap is appended to `visits` (append-only log, never edited), and
 // also fills the next open attempt slot (1-3) when there is one, so the
 // attempt shows up in the case's attempt history with its GPS proof.
-exports.handler = async (event) => {
+exports.handler = requireAuth(async (event) => {
   if (event.httpMethod !== 'POST') return { statusCode: 405, body: 'Method not allowed' };
 
   try {
@@ -73,4 +74,4 @@ exports.handler = async (event) => {
     console.error(err);
     return { statusCode: 500, body: err.message || 'Failed to record arrival' };
   }
-};
+});

@@ -676,6 +676,8 @@
   }
   [routeStartSel, routeEndSel].forEach((el) => el.addEventListener('change', syncEnds));
   [routeStartAddr, routeEndAddr].forEach((el) => el.addEventListener('input', syncEnds));
+  if (!['here', 'custom'].includes(routeStartSel.value)) routeStartSel.value = 'here';
+  if (!['last', 'custom'].includes(routeEndSel.value)) routeEndSel.value = 'last';
   syncEnds();
 
   // Returns { start: address|null (null = current location), end: address|null (null = last stop) }
@@ -696,6 +698,73 @@
       .map((id) => routeCases.find((c) => c.id === id))
       .filter(Boolean);
   }
+
+
+  // Order the stops by how close they are, starting from where you are (or
+  // the start address you typed): nearest first, then the nearest to that, etc.
+  // "Reverse order" flips it, to run the route the other way.
+  const toRad = (d) => (d * Math.PI) / 180;
+  function milesBetween(a, b) {
+    const R = 3958.8;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  $('#sortNearBtn').addEventListener('click', async () => {
+    const st = $('#sortStatus');
+    const btn = $('#sortNearBtn');
+    const stops = routeAddresses();
+    if (stops.length < 2) { st.textContent = 'Add at least two stops first.'; st.className = 'status err'; return; }
+    btn.disabled = true;
+    st.textContent = 'Finding where everything is… (about a second per stop)';
+    st.className = 'status';
+    try {
+      let here;
+      if (routeStartSel.value === 'custom' && routeStartAddr.value.trim()) {
+        const g = await geocode(routeStartAddr.value.trim());
+        here = { lat: Number(g.lat), lon: Number(g.lon) };
+      } else {
+        here = await hereNow();
+      }
+      const placed = [];
+      const unknown = [];
+      for (const c of stops) {
+        try {
+          const g = await geocode(c.serviceAddress);
+          placed.push({ c, p: { lat: Number(g.lat), lon: Number(g.lon) } });
+        } catch (_) { unknown.push(c); }
+      }
+      const ordered = [];
+      let cur = here;
+      while (placed.length) {
+        let bi = 0;
+        let bd = Infinity;
+        placed.forEach((x, i) => { const d = milesBetween(cur, x.p); if (d < bd) { bd = d; bi = i; } });
+        const [pick] = placed.splice(bi, 1);
+        ordered.push(pick.c);
+        cur = pick.p;
+      }
+      routeOrder = [...ordered, ...unknown].map((c) => c.id);
+      saveRouteOrder();
+      renderRoute();
+      st.textContent = unknown.length
+        ? `Ordered nearest first. ${unknown.length} address${unknown.length === 1 ? '' : 'es'} couldn't be found on the map, so ${unknown.length === 1 ? 'it was' : 'they were'} left at the end.`
+        : 'Ordered nearest first. Tap Reverse order to run it the other way.';
+      st.className = 'status ok';
+    } catch (err) {
+      st.textContent = err.message;
+      st.className = 'status err';
+    }
+    btn.disabled = false;
+  });
+  $('#reverseRouteBtn').addEventListener('click', () => {
+    routeOrder = routeOrder.slice().reverse();
+    saveRouteOrder();
+    renderRoute();
+    $('#sortStatus').textContent = 'Order reversed.';
+    $('#sortStatus').className = 'status ok';
+  });
 
   $('#openRouteBtn').addEventListener('click', () => {
     if (!routeOrder.length) {
@@ -3019,7 +3088,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261110';
+  const ROS_V = '20261111';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

@@ -581,3 +581,7 @@ The Route tab has **Start from** (where I am right now / Home / another address)
 ## Physical returns outside Davidson County
 
 When a return is completed (upload-and-send or manual "Mark returned") on a case whose county isn't Davidson, a pop-up says to return the physical document to Kevin. A case with no county gets a softer "check the county" pop-up so none are missed.
+
+## Route ordering (no home address)
+
+The Route tab no longer asks for a home address. Tap the cases you'll drive, then **Nearest first** orders them from where you are (or the start address you typed): closest stop first, then the closest to that, and so on. **Reverse order** runs it the other way. Apple Maps then opens with the route ready. Stops whose address can't be found on the map are left at the end.

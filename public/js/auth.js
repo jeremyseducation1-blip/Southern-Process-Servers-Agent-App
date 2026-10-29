@@ -3,21 +3,31 @@
 // - If the server says a login is needed (or it expired), shows the login screen.
 // - Does nothing visible when no password has been set up on the server.
 (function () {
-  // The sign-in lives in memory only: it is gone the moment the app is closed
-  // or reloaded, so every time you open the app you sign in again (Face ID
-  // makes that a glance). Nothing is kept on the phone. The one exception is a
-  // single reload right after signing in, which hands the sign-in across.
-  const HAND = 'sps_handoff';
+  // Stay signed in while you're using the app. After 30 minutes with no
+  // activity (or the app left alone that long) it signs you out and asks for
+  // the password / Face ID again.
+  const IDLE_MS = 30 * 60 * 1000;
+  const KEY = 'sps_auth', LAST = 'sps_last';
   const FN = '/.netlify/functions/';
   let mem = '';
+  const touch = () => { try { localStorage.setItem(LAST, String(Date.now())); } catch (_) { /* ignore */ } };
+  const expireIfIdle = () => {
+    try {
+      const last = Number(localStorage.getItem(LAST) || 0);
+      if (mem && last && Date.now() - last > IDLE_MS) { mem = ''; localStorage.removeItem(KEY); return true; }
+    } catch (_) { /* ignore */ }
+    return false;
+  };
   try {
-    mem = sessionStorage.getItem(HAND) || '';
-    sessionStorage.removeItem(HAND);
-    localStorage.removeItem('sps_auth'); // older versions kept it on the phone
+    mem = localStorage.getItem(KEY) || '';
+    expireIfIdle();
   } catch (_) { /* ignore */ }
-  const get = () => mem;
-  const put = (t) => { mem = t || ''; };
-  const reloadSignedIn = () => { try { if (mem) sessionStorage.setItem(HAND, mem); } catch (_) { /* ignore */ } location.reload(); };
+  const get = () => { if (expireIfIdle()) { location.reload(); } return mem; };
+  const put = (t) => { mem = t || ''; try { if (mem) { localStorage.setItem(KEY, mem); touch(); } else localStorage.removeItem(KEY); } catch (_) { /* ignore */ } };
+  const reloadSignedIn = () => { location.reload(); };
+  let lastTouch = 0;
+  ['click', 'touchstart', 'keydown', 'scroll'].forEach((ev) =>
+    document.addEventListener(ev, () => { if (mem && Date.now() - lastTouch > 15000) { lastTouch = Date.now(); touch(); } }, { passive: true }));
 
   const nativeFetch = window.fetch.bind(window);
   let gateShown = false;
@@ -178,13 +188,8 @@
     });
   }
 
-  // Leaving the app for more than half a minute locks it again (a quick hop to
-  // Messages or Maps and back doesn't make you sign in twice).
-  let hiddenAt = 0;
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
-    if (hiddenAt && mem && status.required && Date.now() - hiddenAt > 30000) { mem = ''; location.reload(); }
-    hiddenAt = 0;
+    if (document.visibilityState === 'visible' && mem && expireIfIdle()) location.reload();
   });
 
   nativeFetch(FN + 'auth-status', { headers: get() ? { Authorization: 'Bearer ' + get() } : {} })

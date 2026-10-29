@@ -628,7 +628,6 @@
       }
       routeActions.hidden = false;
       renderRoute();
-      refreshMileageSummary();
     } catch (err) {
       routeList.innerHTML = `<p class="status err">Failed to load. (${esc(err.message)})</p>`;
     } finally {
@@ -660,6 +659,60 @@
       .filter(Boolean);
   }
 
+
+  const toRad = (d) => (d * Math.PI) / 180;
+  function milesBetween(a, b) {
+    const R = 3958.8;
+    const dLat = toRad(b.lat - a.lat);
+    const dLon = toRad(b.lon - a.lon);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  async function sortRoute(far) {
+    const st = $('#sortStatus');
+    const btn = $('#sortNearBtn');
+    const btn2 = $('#sortFarBtn');
+    const stops = routeAddresses();
+    if (stops.length < 2) { st.textContent = 'Add at least two stops first.'; st.className = 'status err'; return; }
+    btn.disabled = true; btn2.disabled = true;
+    st.textContent = 'Finding where everything is… (about a second per stop)';
+    st.className = 'status';
+    try {
+      const here = await hereNow();
+      const placed = [];
+      const unknown = [];
+      for (const c of stops) {
+        try {
+          const g = await geocode(c.serviceAddress);
+          placed.push({ c, p: { lat: Number(g.lat), lon: Number(g.lon) } });
+        } catch (_) { unknown.push(c); }
+      }
+      const ordered = [];
+      let cur = here;
+      while (placed.length) {
+        let bi = 0;
+        let bd = Infinity;
+        placed.forEach((x, i) => { const d = milesBetween(cur, x.p); if (d < bd) { bd = d; bi = i; } });
+        const [pick] = placed.splice(bi, 1);
+        ordered.push(pick.c);
+        cur = pick.p;
+      }
+      if (far) ordered.reverse();
+      routeOrder = [...ordered, ...unknown].map((c) => c.id);
+      saveRouteOrder();
+      renderRoute();
+      st.textContent = unknown.length
+        ? `Ordered ${far ? 'furthest' : 'nearest'} first. ${unknown.length} address${unknown.length === 1 ? '' : 'es'} couldn't be found on the map, so ${unknown.length === 1 ? 'it was' : 'they were'} left at the end.`
+        : `Ordered ${far ? 'furthest' : 'nearest'} first.`;
+      st.className = 'status ok';
+    } catch (err) {
+      st.textContent = err.message;
+      st.className = 'status err';
+    }
+    btn.disabled = false; btn2.disabled = false;
+  }
+  $('#sortNearBtn').addEventListener('click', () => sortRoute(false));
+  $('#sortFarBtn').addEventListener('click', () => sortRoute(true));
 
   $('#openRouteBtn').addEventListener('click', () => {
     if (!routeOrder.length) {
@@ -826,7 +879,6 @@
       });
       milesStatus.textContent = `Saved ${miles.toFixed(1)} miles for ${date}.`;
       milesStatus.className = 'status ok';
-      refreshMileageSummary();
       $('#saveTripBox').hidden = true;
       $('#tripNote').value = '';
     } catch (err) {
@@ -864,19 +916,6 @@
       year: sum((t) => t.date.startsWith(today.slice(0, 4)))
     };
   }
-  async function refreshMileageSummary() {
-    const box = $('#mileageSummary');
-    if (!box) return;
-    try {
-      const { trips } = await loadMileage();
-      const t = mileageTotals(trips);
-      box.innerHTML =
-        `<div class="kv"><span>Today</span><span><b>${t.today.toFixed(1)} mi</b></span></div>` +
-        `<div class="kv"><span>This week (Mon–Sun)</span><span><b>${t.week.toFixed(1)} mi</b></span></div>` +
-        `<div class="kv"><span>This year</span><span><b>${t.year.toFixed(1)} mi</b></span></div>`;
-    } catch (_) { box.textContent = ''; }
-  }
-
   async function renderMileageList() {
     const out = $('#mileageList');
     out.innerHTML = '<p class="hint">Loading…</p>';
@@ -887,8 +926,7 @@
       const total = rows.reduce((s, t) => s + t.miles, 0);
       if (!rows.length) { out.innerHTML = `<p class="hint">No trips saved for ${esc(year)} yet.</p>`; return; }
       out.innerHTML =
-        (() => { const t = mileageTotals(trips); return `<div class="info-card" style="margin:.4rem 0;"><div class="kv"><span>Today</span><span><b>${t.today.toFixed(1)} mi</b></span></div><div class="kv"><span>This week (Mon–Sun)</span><span><b>${t.week.toFixed(1)} mi</b></span></div></div>`; })() +
-        `<p><strong>${total.toFixed(1)} miles</strong> in ${esc(year)} (${rows.length} trip${rows.length === 1 ? '' : 's'})</p>` +
+        `<p><strong>${total.toFixed(1)} miles</strong> for ${esc(year)} (${rows.length} trip${rows.length === 1 ? '' : 's'})</p>` +
         (IRS_RATE[year]
           ? `<p>Estimated deduction: <strong>$${(total * IRS_RATE[year]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> at the IRS rate of ${(IRS_RATE[year] * 100).toFixed(1).replace(/\.0$/, '')}¢/mile. <span class="hint">An estimate only — check with your tax preparer.</span></p>`
           : '') +
@@ -911,7 +949,7 @@
         a.addEventListener('click', async (e) => {
           e.preventDefault();
           if (!confirm('Delete this trip from the mileage log?')) return;
-          try { await postMileage({ action: 'delete', id: a.dataset.id }); renderMileageList(); refreshMileageSummary(); }
+          try { await postMileage({ action: 'delete', id: a.dataset.id }); renderMileageList(); }
           catch (err) { alert('Could not delete — try again. (' + err.message + ')'); }
         });
       });
@@ -3050,7 +3088,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261119';
+  const ROS_V = '20261120';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

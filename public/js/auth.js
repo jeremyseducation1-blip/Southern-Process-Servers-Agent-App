@@ -154,7 +154,7 @@
       btn.disabled = true; msg.style.color = '#4A5B7C'; msg.textContent = 'Checking…';
       try {
         const res = await nativeFetch(FN + 'login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: input.value }) });
-        if (!res.ok) throw new Error(res.status === 401 ? 'Wrong password.' : 'Could not sign in — try again.');
+        if (!res.ok) throw new Error(res.status === 401 ? (await res.text()) : 'Could not sign in — try again.');
         const { token } = await res.json();
         put(token);
         let offered = false;

@@ -1158,8 +1158,20 @@
         : `<p class="hint">Nothing here.</p>`;
       return;
     }
+    // Same name showing up on more than one case: open ones first, and every
+    // row spells out the case number + plaintiff so repeats can't be confused.
+    const nameKey = (c) => String(c.defendant || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const everyone = (allCasesCache && allCasesCache.length ? allCasesCache : cases);
+    const sameName = {};
+    everyone.forEach((c) => { const k = nameKey(c); if (k) (sameName[k] = sameName[k] || []).push(c); });
+    cases = cases.slice().sort((a, b) => (a.status === 'closed') - (b.status === 'closed'));
     caseSearchResults.innerHTML = cases
       .map((c) => {
+        const repeats = sameName[nameKey(c)] || [];
+        const repeatFlag = repeats.length > 1
+          ? `<div class="flag repeat">⚠ Same name on ${repeats.length} cases (${repeats.filter((x) => x.status !== 'closed').length} open, ${repeats.filter((x) => x.status === 'closed').length} closed)</div>`
+          : '';
+        const idLine = `<div class="addr"><b>${esc(c.caseNo || 'No case #')}</b> · ${esc(c.plaintiff || 'Unknown plaintiff')}</div>`;
         const style = `${c.plaintiff || 'Unknown Plaintiff'} v. ${c.defendant || 'Unknown Defendant'}`;
         let statusLabel;
         if (c.status === 'closed') statusLabel = c.returnOutcome || 'Closed';
@@ -1331,11 +1343,11 @@
         const noAttempts = !sortedAttempts.length ? `<p class="hint">No attempts logged yet. Tap the yellow button above when you're at the door.</p>` : '';
         const pill = `<span class="${statusPillClass}">${esc(statusLabel)}</span>`;
         return (
-          `<div class="case-row" data-case-row="${c.id}">` +
+          `<div class="case-row${c.status === 'closed' ? ' is-closed' : ''}" data-case-row="${c.id}">` +
           `<div class="case-summary" role="button" tabindex="0" data-open-case="${c.id}">` +
           `<span class="dot ${dotClass}"></span>` +
-          `<div class="main"><div class="name">${esc(c.defendant || 'Unknown Defendant')}</div>` +
-          `<div class="addr">${esc(addr)}</div>${flag}</div>` +
+          `<div class="main"><div class="name">${esc(c.defendant || 'Unknown Defendant')}${c.status === 'closed' ? ' <span class="closed-tag">CLOSED</span>' : ''}</div>` +
+          `${idLine}<div class="addr">${esc(addr)}</div>${flag}${repeatFlag}</div>` +
           `<div><div class="bars">${bars}</div><div class="bars-count">${sortedAttempts.length} of 3</div></div>` +
           `</div>` +
           `<div class="case-sheet" data-tab="info">` +
@@ -3094,7 +3106,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261121';
+  const ROS_V = '20261122';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

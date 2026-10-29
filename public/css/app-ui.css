@@ -318,3 +318,7 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .attempt-thumb{display:block;width:100%;max-width:260px;max-height:200px;object-fit:cover;border-radius:12px;background:#E8EEFC;box-shadow:0 1px 4px rgba(11,42,91,.15);-webkit-touch-callout:none;}
 .app-shell .attempt-thumb-hint{font-size:.78rem;font-weight:400;color:#4A5B7C;}
 .app-shell a.text-link{margin-left:.35rem;font-size:.8rem;font-weight:700;color:var(--blue);}
+
+.app-shell .case-summary .flag.repeat{color:#B54708;background:#FFF4E5;border-radius:6px;padding:2px 6px;display:inline-block;}
+.app-shell .closed-tag{font-size:.68rem;font-weight:800;letter-spacing:.04em;color:#fff;background:#6B7280;border-radius:5px;padding:1px 6px;vertical-align:middle;}
+.app-shell .case-row.is-closed > .case-summary{opacity:.62;}

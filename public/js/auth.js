@@ -3,10 +3,21 @@
 // - If the server says a login is needed (or it expired), shows the login screen.
 // - Does nothing visible when no password has been set up on the server.
 (function () {
-  const KEY = 'sps_auth';
+  // The sign-in lives in memory only: it is gone the moment the app is closed
+  // or reloaded, so every time you open the app you sign in again (Face ID
+  // makes that a glance). Nothing is kept on the phone. The one exception is a
+  // single reload right after signing in, which hands the sign-in across.
+  const HAND = 'sps_handoff';
   const FN = '/.netlify/functions/';
-  const get = () => { try { return localStorage.getItem(KEY) || ''; } catch (_) { return ''; } };
-  const put = (t) => { try { if (t) localStorage.setItem(KEY, t); else localStorage.removeItem(KEY); } catch (_) { /* ignore */ } };
+  let mem = '';
+  try {
+    mem = sessionStorage.getItem(HAND) || '';
+    sessionStorage.removeItem(HAND);
+    localStorage.removeItem('sps_auth'); // older versions kept it on the phone
+  } catch (_) { /* ignore */ }
+  const get = () => mem;
+  const put = (t) => { mem = t || ''; };
+  const reloadSignedIn = () => { try { if (mem) sessionStorage.setItem(HAND, mem); } catch (_) { /* ignore */ } location.reload(); };
 
   const nativeFetch = window.fetch.bind(window);
   let gateShown = false;
@@ -101,10 +112,10 @@
       '<button id="spsPkNo" style="width:100%;height:44px;margin-top:8px;border:0;background:none;color:#4A5B7C;font-size:.95rem;">Not now</button>' +
       '<p id="spsPkMsg" style="color:#B3261E;font-size:.85rem;min-height:1.2em;margin:8px 0 0;"></p></div>';
     const m = overlay.querySelector('#spsPkMsg');
-    overlay.querySelector('#spsPkNo').addEventListener('click', () => { try { localStorage.setItem('sps_pk', 'skip'); } catch (_) { /* ignore */ } location.reload(); });
+    overlay.querySelector('#spsPkNo').addEventListener('click', () => { try { localStorage.setItem('sps_pk', 'skip'); } catch (_) { /* ignore */ } reloadSignedIn(); });
     overlay.querySelector('#spsPkYes').addEventListener('click', async () => {
       m.style.color = '#4A5B7C'; m.textContent = 'Follow the Face ID prompt…';
-      try { await registerFaceId('This phone'); location.reload(); }
+      try { await registerFaceId('This phone'); reloadSignedIn(); }
       catch (err) { m.style.color = '#B3261E'; m.textContent = (err && err.message) || 'Face ID setup did not finish.'; }
     });
   }
@@ -138,7 +149,7 @@
     });
     const tryFace = async () => {
       msg.style.color = '#4A5B7C'; msg.textContent = 'Waiting for Face ID…';
-      try { await faceIdSignIn(); location.reload(); }
+      try { await faceIdSignIn(); reloadSignedIn(); }
       catch (err) { msg.style.color = '#B3261E'; msg.textContent = /NotAllowed|cancel/i.test(String(err && (err.name || err.message))) ? 'Face ID was cancelled — use your password, or tap the button to try again.' : (err.message || 'Face ID did not work.'); }
     };
     if (status.passkeys > 0 && passkeysSupported()) {
@@ -160,12 +171,21 @@
         let offered = false;
         try { offered = !!localStorage.getItem('sps_pk'); } catch (_) { /* ignore */ }
         if (passkeysSupported() && !offered) { offerFaceId(o); return; }
-        location.reload();
+        reloadSignedIn();
       } catch (err) {
         msg.style.color = '#B3261E'; msg.textContent = err.message; btn.disabled = false; input.select();
       }
     });
   }
+
+  // Leaving the app for more than half a minute locks it again (a quick hop to
+  // Messages or Maps and back doesn't make you sign in twice).
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    if (hiddenAt && mem && status.required && Date.now() - hiddenAt > 30000) { mem = ''; location.reload(); }
+    hiddenAt = 0;
+  });
 
   nativeFetch(FN + 'auth-status', { headers: get() ? { Authorization: 'Bearer ' + get() } : {} })
     .then((r) => r.json())

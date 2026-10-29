@@ -599,3 +599,7 @@ Every share link (Kevin's, each law firm's) has its own password. Creating a lin
 Once `APP_PASSWORD` is set in Netlify, the app asks for the password. Right after the first password sign-in on a phone it offers **Turn on Face ID**; from then on the sign-in screen asks for Face ID first (password stays as the fallback). **Paperwork → Face ID** adds it on another phone. Only the passkey's public key is stored (private bucket `passkeys`), and it is tied to the site's address. Functions: `passkey-register-options/verify` (password login required) and `passkey-login-options/verify`. Uses `@simplewebauthn/server` (needs Node 22; set in `netlify.toml` — the Supabase library also needs it).
 
 The app stays open until `APP_PASSWORD` exists, because that password is what proves it's you when Face ID is first set up.
+
+## Sign in every time
+
+The app's sign-in is kept in memory only (never saved on the phone), so closing or reloading the app asks for Face ID / the password again. Leaving the app for more than 30 seconds locks it too. A single reload right after signing in hands the sign-in across via `sessionStorage` and clears it immediately. (Share-link pages for Kevin and the firms keep their own 30-day sessions.)

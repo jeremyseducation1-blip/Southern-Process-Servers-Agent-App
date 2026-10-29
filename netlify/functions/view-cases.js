@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { shareGate } = require('./lib/shareAuth');
 
 function client() {
   const url = process.env.SUPABASE_URL;
@@ -65,6 +66,8 @@ exports.handler = async (event) => {
       .maybeSingle();
     if (linkError) throw new Error(linkError.message);
     if (!link) return { statusCode: 403, body: 'Invalid or expired link.' };
+    const blocked = await shareGate(token, event);
+    if (blocked) return blocked;
 
     let query = sb.from('cases').select('data');
     if (link.scope !== 'ALL') {

@@ -1,6 +1,7 @@
 const { createClient } = require('@supabase/supabase-js');
 const { getInvoicePdfUrl } = require('./lib/invoiceStore');
 const { isAuthorized } = require('./lib/auth');
+const { shareGate } = require('./lib/shareAuth');
 
 // Opened from the app (logged in) or from Kevin's ALL-scope share link.
 async function shareLinkIsAll(token) {
@@ -17,8 +18,13 @@ exports.handler = async (event) => {
     return { statusCode: 405, body: 'Method not allowed' };
   }
   try {
-    if (!isAuthorized(event) && !(await shareLinkIsAll(event.queryStringParameters?.token))) {
-      return { statusCode: 401, headers: { 'Content-Type': 'text/plain' }, body: 'AUTH_REQUIRED' };
+    if (!isAuthorized(event)) {
+      const token = event.queryStringParameters?.token;
+      if (!(await shareLinkIsAll(token))) {
+        return { statusCode: 401, headers: { 'Content-Type': 'text/plain' }, body: 'AUTH_REQUIRED' };
+      }
+      const blocked = await shareGate(token, event);
+      if (blocked) return blocked;
     }
     const weekKey = event.queryStringParameters?.week;
     if (!weekKey) return { statusCode: 400, body: 'week is required.' };

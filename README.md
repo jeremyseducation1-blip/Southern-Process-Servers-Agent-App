@@ -585,3 +585,11 @@ When a return is completed (upload-and-send or manual "Mark returned") on a case
 ## Route ordering (no home address)
 
 The Route tab no longer asks for a home address. Tap the cases you'll drive, then **Nearest first** orders them from where you are (or the start address you typed): closest stop first, then the closest to that, and so on. **Reverse order** runs it the other way. Apple Maps then opens with the route ready. Stops whose address can't be found on the map are left at the end.
+
+## Share link passwords
+
+Every share link (Kevin's, each law firm's) has its own password. Creating a link now requires one (6+ characters); the Share Links list shows 🔒 or a warning for links with none, and **Set password / Change password** fixes an old link. Visitors enter it once; the page keeps a signed 30-day session on that device. Changing a link's password signs everyone out of it; revoking the link ends access.
+
+- Only a salted hash is stored (private Storage bucket `share-auth`, created automatically; no database change).
+- Old links with no password keep working until you set one.
+- Gated: `view-cases`, `view-invoices`, `view-return-pdf`, `get-invoice-pdf` (share-link path) and `add-note`. Login goes through `share-login`; setting passwords through `share-set-password` (app login required).

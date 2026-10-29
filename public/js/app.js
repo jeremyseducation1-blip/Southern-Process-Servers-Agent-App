@@ -2014,6 +2014,12 @@
       shareLinkStatus.className = 'status err';
       return;
     }
+    const sharePw = $('#sharePassword').value.trim();
+    if (sharePw.length < 6) {
+      shareLinkStatus.textContent = 'Give the link a password (at least 6 characters).';
+      shareLinkStatus.className = 'status err';
+      return;
+    }
     createShareLinkBtn.disabled = true;
     shareLinkStatus.textContent = 'Creating link…';
     shareLinkStatus.className = 'status';
@@ -2021,12 +2027,13 @@
       const res = await fetch('/.netlify/functions/create-share-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ scope, label: shareLabelInput.value.trim() || scope })
+        body: JSON.stringify({ scope, label: shareLabelInput.value.trim() || scope, password: sharePw })
       });
       if (!res.ok) throw new Error(await res.text());
       const { url } = await res.json();
-      shareLinkStatus.innerHTML = `Link created: <a href="${url}" target="_blank">${url}</a>`;
+      shareLinkStatus.innerHTML = `Link created: <a href="${url}" target="_blank">${url}</a><br>Password: <b>${esc(sharePw)}</b> — send it separately from the link.`;
       shareLinkStatus.className = 'status ok';
+      $('#sharePassword').value = '';
       shareScopeInput.value = '';
       shareLabelInput.value = '';
     } catch (err) {
@@ -2054,10 +2061,32 @@
             `<div class="case-row">` +
             `<div class="case-style">${l.label || l.scope}</div>` +
             `<div class="case-meta"><a href="${l.url}" target="_blank">${l.url}</a></div>` +
+            `<div class="case-meta">${l.hasPassword ? '🔒 Password set' : '⚠️ NO PASSWORD — anyone with this link can view it'}</div>` +
+            `<button type="button" class="btn secondary set-link-pw-btn" data-token="${l.token}" style="margin-top:.4rem;">${l.hasPassword ? 'Change password' : 'Set password'}</button> ` +
             `<button type="button" class="btn secondary revoke-link-btn" data-token="${l.token}" style="margin-top:.4rem;">Revoke</button>` +
             `</div>`
         )
         .join('');
+      shareLinksList.querySelectorAll('.set-link-pw-btn').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+          const pw = (prompt('New password for this link (6+ characters). Tell the person separately from the link:', '') || '').trim();
+          if (!pw) return;
+          btn.disabled = true;
+          try {
+            const res = await fetch('/.netlify/functions/share-set-password', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token: btn.dataset.token, password: pw })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            alert('Password saved: ' + pw + '\n\nGive it to them separately from the link. Anyone signed in on that link is signed out and must use the new password.');
+            loadShareLinksBtn.click();
+          } catch (err) {
+            alert('Could not save — ' + err.message);
+            btn.disabled = false;
+          }
+        });
+      });
       shareLinksList.querySelectorAll('.revoke-link-btn').forEach((btn) => {
         btn.addEventListener('click', async () => {
           if (!confirm('Revoke this link? Anyone with it will lose access immediately.')) return;
@@ -3088,7 +3117,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261111';
+  const ROS_V = '20261112';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

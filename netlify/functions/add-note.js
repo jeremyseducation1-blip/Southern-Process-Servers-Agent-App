@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const { getCase, putCase } = require('./lib/caseStore');
 const { authEnabled, isAuthorized } = require('./lib/auth');
 const { sendGmail } = require('./lib/sendGmail');
+const { shareGate } = require('./lib/shareAuth');
 
 // A running, append-only note log on each case: who said what, and when.
 // Notes are never edited or deleted, so "it's in the notes" settles it.
@@ -23,7 +24,11 @@ exports.handler = async (event) => {
   try {
     const { id, text, token } = JSON.parse(event.body || '{}');
     let by;
-    if (token && (await isAllShareLink(token))) by = 'Kevin';
+    if (token && (await isAllShareLink(token))) {
+      const blocked = await shareGate(token, event);
+      if (blocked) return blocked;
+      by = 'Kevin';
+    }
     else if (isAuthorized(event)) by = 'Jeremy';
     else return { statusCode: 401, headers: { 'Content-Type': 'text/plain' }, body: 'AUTH_REQUIRED' };
 

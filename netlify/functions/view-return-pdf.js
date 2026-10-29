@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { shareGate } = require('./lib/shareAuth');
 const { getCase } = require('./lib/caseStore');
 const { getReturnPdfUrl } = require('./lib/returnStorage');
 
@@ -26,6 +27,8 @@ exports.handler = async (event) => {
       .maybeSingle();
     if (error) throw new Error(error.message);
     if (!link) return { statusCode: 403, body: 'Invalid or expired link.' };
+    const blocked = await shareGate(token, event);
+    if (blocked) return blocked;
 
     const c = await getCase(id);
     if (!c) return { statusCode: 404, body: 'No case found.' };

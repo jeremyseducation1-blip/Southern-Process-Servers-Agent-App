@@ -1,5 +1,6 @@
 const { requireAuth } = require('./lib/auth');
 const { createClient } = require('@supabase/supabase-js');
+const { removePassword } = require('./lib/shareAuth');
 
 function client() {
   const url = process.env.SUPABASE_URL;
@@ -19,6 +20,7 @@ exports.handler = requireAuth(async (event) => {
     const sb = client();
     const { error } = await sb.from('share_links').delete().eq('token', token);
     if (error) throw new Error(error.message);
+    try { await removePassword(token); } catch (_) { /* link is gone either way */ }
 
     return { statusCode: 200, body: JSON.stringify({ deleted: true }) };
   } catch (err) {

@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Case Status — Southern Process Servers</title>
 <meta name="theme-color" content="#0B2A5B">
-<link rel="stylesheet" href="css/style.css?v=20261111">
-<link rel="stylesheet" href="css/app-ui.css?v=20261111">
+<link rel="stylesheet" href="css/style.css?v=20261112">
+<link rel="stylesheet" href="css/app-ui.css?v=20261112">
 <style>
   /* Read-only viewer: same blue + yellow look as the app, no tab bar. */
   body.app-shell.viewer{ padding-bottom:24px; }
@@ -74,6 +74,65 @@
         subtitleEl.textContent = 'Missing link token — check the URL you were given.';
         return;
       }
+
+      // ---- link password ----
+      // Once the password is entered, a signed 30-day session is kept on this
+      // device and sent with every request. A wrong/expired session asks again.
+      const SKEY = 'sps_share_' + token;
+      const getSession = () => { try { return localStorage.getItem(SKEY) || ''; } catch (_) { return ''; } };
+      const setSession = (v) => { try { v ? localStorage.setItem(SKEY, v) : localStorage.removeItem(SKEY); } catch (_) { /* ignore */ } };
+      const realFetch = window.fetch.bind(window);
+      let askPassword = null; // set below; called when the server says a password is needed
+      async function authedFetch(url, opts) {
+        opts = opts || {};
+        const headers = Object.assign({}, opts.headers || {});
+        const s = getSession();
+        if (s) headers['x-share-auth'] = s;
+        const res = await realFetch(url, Object.assign({}, opts, { headers }));
+        if (res.status === 401) {
+          const txt = await res.clone().text();
+          if (txt === 'SHARE_PASSWORD_REQUIRED') {
+            setSession('');
+            await askPassword();
+            return authedFetch(url, opts);
+          }
+        }
+        return res;
+      }
+      window.fetch = authedFetch;
+      let pendingAsk = null;
+      askPassword = () => {
+        if (pendingAsk) return pendingAsk;
+        pendingAsk = new Promise((resolve) => {
+          const box = document.createElement('div');
+          box.style.cssText = 'position:fixed;inset:0;background:#0B2A5B;z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px;';
+          box.innerHTML = '<form style="background:#fff;border-radius:16px;padding:22px;max-width:340px;width:100%;box-sizing:border-box;font-family:system-ui,sans-serif;">' +
+            '<h2 style="margin:0 0 6px;color:#0B2A5B;">Southern Process Servers</h2>' +
+            '<p style="margin:0 0 12px;color:#4A5B7C;font-size:.95rem;">Enter the password for this link.</p>' +
+            '<input type="password" id="spPw" autocomplete="current-password" style="width:100%;box-sizing:border-box;border:2px solid #C9D5EE;border-radius:12px;padding:12px;font-size:1rem;margin-bottom:10px;">' +
+            '<button type="submit" style="width:100%;background:#FFC72C;color:#0B2A5B;border:0;border-radius:12px;padding:12px;font-weight:800;font-size:1rem;">Open</button>' +
+            '<p id="spPwErr" style="color:#B42318;font-size:.9rem;margin:10px 0 0;"></p></form>';
+          document.body.appendChild(box);
+          const form = box.querySelector('form');
+          const input = box.querySelector('#spPw');
+          setTimeout(() => input.focus(), 50);
+          form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const err = box.querySelector('#spPwErr');
+            err.textContent = 'Checking…';
+            try {
+              const res = await realFetch('/.netlify/functions/share-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password: input.value }) });
+              if (!res.ok) { err.textContent = await res.text(); input.select(); return; }
+              const j = await res.json();
+              if (j.session) setSession(j.session);
+              box.remove();
+              pendingAsk = null;
+              resolve();
+            } catch (_) { err.textContent = 'Could not check the password — try again.'; }
+          });
+        });
+        return pendingAsk;
+      };
 
       let allCases = [];
       const drafts = {};

@@ -1,5 +1,6 @@
 const { requireAuth } = require('./lib/auth');
 const { createClient } = require('@supabase/supabase-js');
+const { passwordsSetFor } = require('./lib/shareAuth');
 
 function client() {
   const url = process.env.SUPABASE_URL;
@@ -18,8 +19,10 @@ exports.handler = requireAuth(async (event) => {
     if (error) throw new Error(error.message);
 
     const siteUrl = process.env.URL || '';
+    const has = await passwordsSetFor((data || []).map((r) => r.token));
     const links = (data || []).map((row) => ({
       ...row,
+      hasPassword: !!has[row.token],
       url: `${siteUrl}/view.html?token=${row.token}`
     }));
 

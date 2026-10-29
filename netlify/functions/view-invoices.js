@@ -1,4 +1,5 @@
 const { createClient } = require('@supabase/supabase-js');
+const { shareGate } = require('./lib/shareAuth');
 const { listInvoices } = require('./lib/invoiceStore');
 
 function client() {
@@ -25,6 +26,8 @@ exports.handler = async (event) => {
       .maybeSingle();
     if (linkError) throw new Error(linkError.message);
     if (!link) return { statusCode: 403, body: 'Invalid or expired link.' };
+    const blocked = await shareGate(token, event);
+    if (blocked) return blocked;
 
     // Invoices are Jeremy's overall billing, not scoped to one firm --
     // only Kevin's ALL-scope link gets to see them.

@@ -628,6 +628,7 @@
       }
       routeActions.hidden = false;
       renderRoute();
+      refreshMileageSummary();
     } catch (err) {
       routeList.innerHTML = `<p class="status err">Failed to load. (${esc(err.message)})</p>`;
     } finally {
@@ -653,46 +654,6 @@
     return 'https://maps.apple.com/?dirflg=d' + (start ? '&saddr=' + encodeURIComponent(start) : '') + '&' + addrs.map((a) => 'daddr=' + encodeURIComponent(a)).join('&');
   }
 
-  // Where the route starts and ends. Default: start where you are, end at the last stop.
-  const routeStartSel = $('#routeStartSel');
-  const routeEndSel = $('#routeEndSel');
-  const routeStartAddr = $('#routeStartAddr');
-  const routeEndAddr = $('#routeEndAddr');
-  try {
-    routeStartSel.value = localStorage.getItem('sps_routeStart') || 'here';
-    routeEndSel.value = localStorage.getItem('sps_routeEnd') || 'last';
-    routeStartAddr.value = localStorage.getItem('sps_routeStartAddr') || '';
-    routeEndAddr.value = localStorage.getItem('sps_routeEndAddr') || '';
-  } catch (_) { /* ignore */ }
-  function syncEnds() {
-    routeStartAddr.hidden = routeStartSel.value !== 'custom';
-    routeEndAddr.hidden = routeEndSel.value !== 'custom';
-    try {
-      localStorage.setItem('sps_routeStart', routeStartSel.value);
-      localStorage.setItem('sps_routeEnd', routeEndSel.value);
-      localStorage.setItem('sps_routeStartAddr', routeStartAddr.value);
-      localStorage.setItem('sps_routeEndAddr', routeEndAddr.value);
-    } catch (_) { /* ignore */ }
-  }
-  [routeStartSel, routeEndSel].forEach((el) => el.addEventListener('change', syncEnds));
-  [routeStartAddr, routeEndAddr].forEach((el) => el.addEventListener('input', syncEnds));
-  if (!['here', 'custom'].includes(routeStartSel.value)) routeStartSel.value = 'here';
-  if (!['last', 'custom'].includes(routeEndSel.value)) routeEndSel.value = 'last';
-  syncEnds();
-
-  // Returns { start: address|null (null = current location), end: address|null (null = last stop) }
-  // or { error } when something needed is missing.
-  function routeEnds() {
-    const home = ($('#homeAddress').value || '').trim();
-    let start = null;
-    let end = null;
-    if (routeStartSel.value === 'home') { if (!home) return { error: 'Save your home address first, or pick a different start.' }; start = home; }
-    if (routeStartSel.value === 'custom') { start = routeStartAddr.value.trim(); if (!start) return { error: 'Type the start address.' }; }
-    if (routeEndSel.value === 'home') { if (!home) return { error: 'Save your home address first, or pick a different end.' }; end = home; }
-    if (routeEndSel.value === 'custom') { end = routeEndAddr.value.trim(); if (!end) return { error: 'Type the end address.' }; }
-    return { start, end };
-  }
-
   function routeAddresses() {
     return routeOrder
       .map((id) => routeCases.find((c) => c.id === id))
@@ -700,86 +661,18 @@
   }
 
 
-  // Order the stops by how close they are, starting from where you are (or
-  // the start address you typed): nearest first, then the nearest to that, etc.
-  // "Reverse order" flips it, to run the route the other way.
-  const toRad = (d) => (d * Math.PI) / 180;
-  function milesBetween(a, b) {
-    const R = 3958.8;
-    const dLat = toRad(b.lat - a.lat);
-    const dLon = toRad(b.lon - a.lon);
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
-    return 2 * R * Math.asin(Math.sqrt(h));
-  }
-  $('#sortNearBtn').addEventListener('click', async () => {
-    const st = $('#sortStatus');
-    const btn = $('#sortNearBtn');
-    const stops = routeAddresses();
-    if (stops.length < 2) { st.textContent = 'Add at least two stops first.'; st.className = 'status err'; return; }
-    btn.disabled = true;
-    st.textContent = 'Finding where everything is… (about a second per stop)';
-    st.className = 'status';
-    try {
-      let here;
-      if (routeStartSel.value === 'custom' && routeStartAddr.value.trim()) {
-        const g = await geocode(routeStartAddr.value.trim());
-        here = { lat: Number(g.lat), lon: Number(g.lon) };
-      } else {
-        here = await hereNow();
-      }
-      const placed = [];
-      const unknown = [];
-      for (const c of stops) {
-        try {
-          const g = await geocode(c.serviceAddress);
-          placed.push({ c, p: { lat: Number(g.lat), lon: Number(g.lon) } });
-        } catch (_) { unknown.push(c); }
-      }
-      const ordered = [];
-      let cur = here;
-      while (placed.length) {
-        let bi = 0;
-        let bd = Infinity;
-        placed.forEach((x, i) => { const d = milesBetween(cur, x.p); if (d < bd) { bd = d; bi = i; } });
-        const [pick] = placed.splice(bi, 1);
-        ordered.push(pick.c);
-        cur = pick.p;
-      }
-      routeOrder = [...ordered, ...unknown].map((c) => c.id);
-      saveRouteOrder();
-      renderRoute();
-      st.textContent = unknown.length
-        ? `Ordered nearest first. ${unknown.length} address${unknown.length === 1 ? '' : 'es'} couldn't be found on the map, so ${unknown.length === 1 ? 'it was' : 'they were'} left at the end.`
-        : 'Ordered nearest first. Tap Reverse order to run it the other way.';
-      st.className = 'status ok';
-    } catch (err) {
-      st.textContent = err.message;
-      st.className = 'status err';
-    }
-    btn.disabled = false;
-  });
-  $('#reverseRouteBtn').addEventListener('click', () => {
-    routeOrder = routeOrder.slice().reverse();
-    saveRouteOrder();
-    renderRoute();
-    $('#sortStatus').textContent = 'Order reversed.';
-    $('#sortStatus').className = 'status ok';
-  });
-
   $('#openRouteBtn').addEventListener('click', () => {
     if (!routeOrder.length) {
       alert('Add at least one case to the route first.');
       return;
     }
-    const ends = routeEnds();
-    if (ends.error) { alert(ends.error); return; }
     const dests = routeAddresses().map((c) => c.serviceAddress);
-    if (ends.end) dests.push(ends.end);
     if (dests.length > 9) {
       alert('Maps handles about 9 stops at a time. Remove a few and open the rest as a second route.');
       return;
     }
-    window.open(buildMapsUrl(dests, ends.start), '_blank');
+    // No start address: Apple Maps starts from wherever you are.
+    window.open(buildMapsUrl(dests, null), '_blank');
   });
 
 
@@ -888,8 +781,6 @@
     const ordered = routeAddresses();
     milesStatus.textContent = '';
     if (!ordered.length) { milesStatus.textContent = 'Add at least one case to the route first.'; milesStatus.className = 'status err'; return; }
-    const ends = routeEnds();
-    if (ends.error) { milesStatus.textContent = ends.error; milesStatus.className = 'status err'; return; }
     const btn = $('#calcMilesBtn');
     btn.disabled = true;
     milesStatus.textContent = 'Calculating… (about a second per stop)';
@@ -898,23 +789,21 @@
     $('#saveTripBox').hidden = true;
     lastRouteStops = ordered.map((c) => c.serviceAddress);
     try {
-      const startPt = ends.start || (await hereNow());
+      const startPt = await hereNow();
       const stops = [startPt, ...ordered.map((c) => c.serviceAddress)];
-      if (ends.end) stops.push(ends.end);
-      const label = (v, i) => (typeof v === 'object' ? 'Where you are now' : (i === 0 ? ends.start : v));
       const { total, legs } = await routeMiles(stops);
       milesResult.innerHTML =
-        `<p><strong>${total.toFixed(1)} miles</strong> ${ends.end ? 'start to finish' : 'to your last stop'}</p>` +
-        legs.map((m, i) => `<div class="defendant-line">${esc(label(stops[i], i))} → ${esc(label(stops[i + 1], i + 1))}: ${m.toFixed(1)} mi</div>`).join('');
+        `<p><strong>${total.toFixed(1)} miles</strong> from where you are to your last stop</p>` +
+        legs.map((m, i) => `<div class="defendant-line">${i === 0 ? 'Where you are now' : esc(stops[i])} → ${esc(stops[i + 1])}: ${m.toFixed(1)} mi</div>`).join('');
       $('#tripMiles').value = total.toFixed(1);
       $('#tripMiles').dataset.estimate = total.toFixed(1);
-      $('#tripDate').value = new Date().toLocaleDateString('en-CA');
+      $('#tripDate').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
       $('#saveTripBox').hidden = false;
       milesStatus.textContent = '';
     } catch (err) {
       milesStatus.textContent = err.message + ' You can still type your miles by hand below.';
       milesStatus.className = 'status err';
-      $('#tripDate').value = new Date().toLocaleDateString('en-CA');
+      $('#tripDate').value = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
       $('#saveTripBox').hidden = false;
     }
     btn.disabled = false;
@@ -937,6 +826,7 @@
       });
       milesStatus.textContent = `Saved ${miles.toFixed(1)} miles for ${date}.`;
       milesStatus.className = 'status ok';
+      refreshMileageSummary();
       $('#saveTripBox').hidden = true;
       $('#tripNote').value = '';
     } catch (err) {
@@ -954,6 +844,39 @@
   })();
   // IRS standard business mileage rates, dollars per mile, by tax year.
   const IRS_RATE = { 2026: 0.725, 2025: 0.70, 2024: 0.67 };
+
+  // ---- Mileage totals: today, this week (Mon-Sun), this year ----
+  const centralDay = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+  function weekStartOf(dateStr) {
+    const [y, m, d] = String(dateStr).split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    const dow = dt.getUTCDay(); // 0 = Sunday
+    dt.setUTCDate(dt.getUTCDate() + (dow === 0 ? -6 : 1 - dow));
+    return dt.toISOString().slice(0, 10);
+  }
+  function mileageTotals(trips) {
+    const today = centralDay();
+    const wk = weekStartOf(today);
+    const sum = (f) => trips.filter(f).reduce((s, t) => s + t.miles, 0);
+    return {
+      today: sum((t) => t.date === today),
+      week: sum((t) => weekStartOf(t.date) === wk),
+      year: sum((t) => t.date.startsWith(today.slice(0, 4)))
+    };
+  }
+  async function refreshMileageSummary() {
+    const box = $('#mileageSummary');
+    if (!box) return;
+    try {
+      const { trips } = await loadMileage();
+      const t = mileageTotals(trips);
+      box.innerHTML =
+        `<div class="kv"><span>Today</span><span><b>${t.today.toFixed(1)} mi</b></span></div>` +
+        `<div class="kv"><span>This week (Mon–Sun)</span><span><b>${t.week.toFixed(1)} mi</b></span></div>` +
+        `<div class="kv"><span>This year</span><span><b>${t.year.toFixed(1)} mi</b></span></div>`;
+    } catch (_) { box.textContent = ''; }
+  }
+
   async function renderMileageList() {
     const out = $('#mileageList');
     out.innerHTML = '<p class="hint">Loading…</p>';
@@ -964,21 +887,31 @@
       const total = rows.reduce((s, t) => s + t.miles, 0);
       if (!rows.length) { out.innerHTML = `<p class="hint">No trips saved for ${esc(year)} yet.</p>`; return; }
       out.innerHTML =
+        (() => { const t = mileageTotals(trips); return `<div class="info-card" style="margin:.4rem 0;"><div class="kv"><span>Today</span><span><b>${t.today.toFixed(1)} mi</b></span></div><div class="kv"><span>This week (Mon–Sun)</span><span><b>${t.week.toFixed(1)} mi</b></span></div></div>`; })() +
         `<p><strong>${total.toFixed(1)} miles</strong> in ${esc(year)} (${rows.length} trip${rows.length === 1 ? '' : 's'})</p>` +
         (IRS_RATE[year]
           ? `<p>Estimated deduction: <strong>$${(total * IRS_RATE[year]).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong> at the IRS rate of ${(IRS_RATE[year] * 100).toFixed(1).replace(/\.0$/, '')}¢/mile. <span class="hint">An estimate only — check with your tax preparer.</span></p>`
           : '') +
         `<a class="btn secondary" style="display:inline-block;text-decoration:none;" href="/.netlify/functions/mileage-csv?year=${encodeURIComponent(year)}">Download CSV for taxes</a>` +
-        rows.map((t) =>
-          `<div class="case-row"><div class="case-style">${esc(t.date)} — ${t.miles.toFixed(1)} mi${t.estimated ? '' : ' (adjusted)'}</div>` +
-          `<div class="case-meta">${(t.stops || []).length} stop${(t.stops || []).length === 1 ? '' : 's'}${t.note ? ' — ' + esc(t.note) : ''}</div>` +
-          `<a href="#" class="delete-trip-link" data-id="${esc(t.id)}">Delete</a></div>`
-        ).join('');
+        (() => {
+          // Trips grouped by week (Mon-Sun) with a total for each week.
+          const weeks = new Map();
+          rows.forEach((t) => { const k = weekStartOf(t.date); if (!weeks.has(k)) weeks.set(k, []); weeks.get(k).push(t); });
+          return Array.from(weeks.entries()).map(([k, list]) => {
+            const wt = list.reduce((s2, t) => s2 + t.miles, 0);
+            return `<h3 style="margin:1rem 0 .3rem;">Week of ${esc(k)} — ${wt.toFixed(1)} mi</h3>` +
+              list.map((t) =>
+                `<div class="case-row"><div class="case-style">${esc(t.date)} — ${t.miles.toFixed(1)} mi${t.estimated ? '' : ' (adjusted)'}</div>` +
+                `<div class="case-meta">${(t.stops || []).length} stop${(t.stops || []).length === 1 ? '' : 's'}${t.note ? ' — ' + esc(t.note) : ''}</div>` +
+                `<a href="#" class="delete-trip-link" data-id="${esc(t.id)}">Delete</a></div>`
+              ).join('');
+          }).join('');
+        })();
       out.querySelectorAll('.delete-trip-link').forEach((a) => {
         a.addEventListener('click', async (e) => {
           e.preventDefault();
           if (!confirm('Delete this trip from the mileage log?')) return;
-          try { await postMileage({ action: 'delete', id: a.dataset.id }); renderMileageList(); }
+          try { await postMileage({ action: 'delete', id: a.dataset.id }); renderMileageList(); refreshMileageSummary(); }
           catch (err) { alert('Could not delete — try again. (' + err.message + ')'); }
         });
       });
@@ -3117,7 +3050,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261118';
+  const ROS_V = '20261119';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

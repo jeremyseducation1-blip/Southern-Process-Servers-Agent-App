@@ -1,3 +1,4 @@
+require('./lib/ensureWebSocket');
 const { requireAuth } = require('./lib/auth');
 const { createClient } = require('@supabase/supabase-js');
 const { passwordsSetFor } = require('./lib/shareAuth');

@@ -13,6 +13,7 @@
 // and week-log-pdf.js keep working unchanged. getCase/putCase now take
 // the row's unique `id` (see makePaperId) instead of a bare case number.
 
+require('./ensureWebSocket');
 const { createClient } = require('@supabase/supabase-js');
 
 function client() {

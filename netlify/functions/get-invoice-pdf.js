@@ -1,3 +1,4 @@
+require('./lib/ensureWebSocket');
 const { createClient } = require('@supabase/supabase-js');
 const { getInvoicePdfUrl } = require('./lib/invoiceStore');
 const { isAuthorized } = require('./lib/auth');

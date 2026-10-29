@@ -593,3 +593,9 @@ Every share link (Kevin's, each law firm's) has its own password. Creating a lin
 - Only a salted hash is stored (private Storage bucket `share-auth`, created automatically; no database change).
 - Old links with no password keep working until you set one.
 - Gated: `view-cases`, `view-invoices`, `view-return-pdf`, `get-invoice-pdf` (share-link path) and `add-note`. Login goes through `share-login`; setting passwords through `share-set-password` (app login required).
+
+## Face ID (passkeys)
+
+Once `APP_PASSWORD` is set in Netlify, the app asks for the password. Right after the first password sign-in on a phone it offers **Turn on Face ID**; from then on the sign-in screen asks for Face ID first (password stays as the fallback). **Paperwork → Face ID** adds it on another phone. Only the passkey's public key is stored (private bucket `passkeys`), and it is tied to the site's address. Functions: `passkey-register-options/verify` (password login required) and `passkey-login-options/verify`. Uses `@simplewebauthn/server` (Node 20+, set in `netlify.toml`).
+
+The app stays open until `APP_PASSWORD` exists, because that password is what proves it's you when Face ID is first set up.

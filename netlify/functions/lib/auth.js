@@ -69,4 +69,20 @@ function requireAuth(handler, opts = {}) {
   };
 }
 
-module.exports = { authEnabled, issueToken, verifyToken, checkPassword, isAuthorized, requireAuth, tokenFromEvent };
+// Short-lived signed values (used to carry a passkey challenge through the
+// browser without storing anything on the server).
+function signedValue(value, ttlMs) {
+  const exp = Date.now() + ttlMs;
+  const body = `${value}.${exp}`;
+  return `${body}.${crypto.createHmac('sha256', secret()).update('pk|' + body).digest('hex')}`;
+}
+function readSigned(signed) {
+  const parts = String(signed || '').split('.');
+  if (parts.length !== 3) return null;
+  const [value, exp, sig] = parts;
+  const want = crypto.createHmac('sha256', secret()).update(`pk|${value}.${exp}`).digest('hex');
+  if (!safeEqual(sig, want) || !(Number(exp) > Date.now())) return null;
+  return value;
+}
+
+module.exports = { signedValue, readSigned, authEnabled, issueToken, verifyToken, checkPassword, isAuthorized, requireAuth, tokenFromEvent };

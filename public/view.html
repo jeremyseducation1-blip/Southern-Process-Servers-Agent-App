@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Case Status — Southern Process Servers</title>
 <meta name="theme-color" content="#0B2A5B">
-<link rel="stylesheet" href="css/style.css?v=20261113">
-<link rel="stylesheet" href="css/app-ui.css?v=20261113">
+<link rel="stylesheet" href="css/style.css?v=20261114">
+<link rel="stylesheet" href="css/app-ui.css?v=20261114">
 <style>
   /* Read-only viewer: same blue + yellow look as the app, no tab bar. */
   body.app-shell.viewer{ padding-bottom:24px; }
@@ -109,19 +109,26 @@
           box.innerHTML = '<form style="background:#fff;border-radius:16px;padding:22px;max-width:340px;width:100%;box-sizing:border-box;font-family:system-ui,sans-serif;">' +
             '<h2 style="margin:0 0 6px;color:#0B2A5B;">Southern Process Servers</h2>' +
             '<p style="margin:0 0 12px;color:#4A5B7C;font-size:.95rem;">Enter the password for this link.</p>' +
-            '<input type="password" id="spPw" autocomplete="current-password" style="width:100%;box-sizing:border-box;border:2px solid #C9D5EE;border-radius:12px;padding:12px;font-size:1rem;margin-bottom:10px;">' +
+            '<div style="position:relative;margin-bottom:10px;"><input type="password" id="spPw" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" style="width:100%;box-sizing:border-box;border:2px solid #C9D5EE;border-radius:12px;padding:12px 48px 12px 12px;font-size:1rem;">' +
+            '<button type="button" id="spEye" aria-label="Show password" style="position:absolute;right:4px;top:4px;width:40px;height:40px;border:0;background:none;font-size:1.2rem;">👁️</button></div>' +
             '<button type="submit" style="width:100%;background:#FFC72C;color:#0B2A5B;border:0;border-radius:12px;padding:12px;font-weight:800;font-size:1rem;">Open</button>' +
             '<p id="spPwErr" style="color:#B42318;font-size:.9rem;margin:10px 0 0;"></p></form>';
           document.body.appendChild(box);
           const form = box.querySelector('form');
           const input = box.querySelector('#spPw');
           setTimeout(() => input.focus(), 50);
+          box.querySelector('#spEye').addEventListener('click', () => {
+            const showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            box.querySelector('#spEye').textContent = showing ? '👁️' : '🙈';
+            input.focus();
+          });
           form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const err = box.querySelector('#spPwErr');
             err.textContent = 'Checking…';
             try {
-              const res = await realFetch('/.netlify/functions/share-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password: input.value }) });
+              const res = await realFetch('/.netlify/functions/share-login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token, password: input.value.trim() }) });
               if (!res.ok) { err.textContent = await res.text(); input.select(); return; }
               const j = await res.json();
               if (j.session) setSession(j.session);

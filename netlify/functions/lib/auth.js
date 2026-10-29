@@ -41,7 +41,8 @@ function verifyToken(token) {
 }
 
 function checkPassword(pw) {
-  return authEnabled() && safeEqual(String(pw || ''), process.env.APP_PASSWORD);
+  // Stray spaces/line breaks at either end (easy to paste into Netlify or type on a phone) don't count.
+  return authEnabled() && safeEqual(String(pw || '').trim(), String(process.env.APP_PASSWORD).trim());
 }
 
 function tokenFromEvent(event) {

@@ -118,7 +118,8 @@
       '<form style="background:#fff;border-radius:18px;padding:24px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35);">' +
       '<div style="font-weight:800;font-size:1.3rem;color:#0B2A5B;margin-bottom:4px;">Southern Process Servers</div>' +
       '<div style="color:#4A5B7C;font-size:.9rem;margin-bottom:16px;">Sign in to continue</div>' +
-      '<input id="spsPw" type="password" autocomplete="current-password" placeholder="Password" style="width:100%;height:50px;border:2px solid #C9D5EE;border-radius:12px;padding:0 14px;font-size:1rem;box-sizing:border-box;">' +
+      '<div style="position:relative;"><input id="spsPw" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Password" style="width:100%;height:50px;border:2px solid #C9D5EE;border-radius:12px;padding:0 54px 0 14px;font-size:1rem;box-sizing:border-box;">' +
+      '<button type="button" id="spsEye" aria-label="Show password" style="position:absolute;right:4px;top:4px;width:42px;height:42px;border:0;background:none;font-size:1.3rem;cursor:pointer;">👁️</button></div>' +
       '<p id="spsPwMsg" style="color:#B3261E;font-size:.85rem;min-height:1.2em;margin:8px 0;"></p>' +
       '<button type="submit" style="width:100%;height:50px;border:0;border-radius:12px;background:#FFC72C;color:#0B2A5B;font-weight:800;font-size:1rem;">Sign in</button>' +
       '<button type="button" id="spsFaceBtn" hidden style="width:100%;height:50px;margin-top:10px;border:2px solid #0B2A5B;border-radius:12px;background:#fff;color:#0B2A5B;font-weight:800;font-size:1rem;">Sign in with Face ID</button>' +
@@ -128,6 +129,13 @@
     msg.textContent = message || '';
     const input = o.querySelector('#spsPw');
     const faceBtn = o.querySelector('#spsFaceBtn');
+    o.querySelector('#spsEye').addEventListener('click', () => {
+      const showing = input.type === 'text';
+      input.type = showing ? 'password' : 'text';
+      o.querySelector('#spsEye').textContent = showing ? '👁️' : '🙈';
+      o.querySelector('#spsEye').setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+      input.focus();
+    });
     const tryFace = async () => {
       msg.style.color = '#4A5B7C'; msg.textContent = 'Waiting for Face ID…';
       try { await faceIdSignIn(); location.reload(); }

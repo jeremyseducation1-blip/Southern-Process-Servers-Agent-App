@@ -1309,7 +1309,7 @@
           ? `<a class="go-btn" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(addr)}">Go</a>`
           : '';
         const phoneTap = c.phoneNumbers
-          ? `<div class="info-card"><div class="k">PHONE</div><div class="v">${linkifyPhones(c.phoneNumbers).replace(/\n/g, '<br>')}</div></div>`
+          ? `<div class="info-card"><div class="k">PHONE</div><div class="v">${linkifyPhones(c.phoneNumbers, c).replace(/\n/g, '<br>')}</div></div>`
           : '';
         const notesCard = (c.notes || c.returnNotes)
           ? `<div class="info-card"><div class="k">NOTES</div><div class="v" style="font-weight:500;white-space:pre-wrap;">` +
@@ -2583,10 +2583,16 @@
     return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
   }
   // Phone numbers in free text become tap-to-call links.
-  function linkifyPhones(text) {
+  // The Text button opens Messages with a ready-made message to the defendant.
+  function textBody(c) {
+    const who = (c && c.defendant) ? c.defendant : '';
+    const pl = (c && c.plaintiff) ? ` on behalf of ${c.plaintiff}` : '';
+    return `Hello${who ? ' ' + who : ''}, this is Jeremy with Southern Process Servers. I have legal papers for you${pl}. Please reply to this text or call me back so we can arrange a time to get them to you. Thank you.`;
+  }
+  function linkifyPhones(text, c) {
     return esc(text).replace(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g, (m) => {
       const digits = m.replace(/\D/g, '');
-      return digits.length >= 10 ? `<a href="tel:${digits}">${m}</a> <a class="text-link" href="sms:${digits}">💬 Text</a>` : m;
+      return digits.length >= 10 ? `<a href="tel:${digits}">${m}</a> <a class="text-link" href="sms:${digits}&body=${encodeURIComponent(textBody(c))}">💬 Text</a>` : m;
     });
   }
 
@@ -2713,7 +2719,7 @@
           `<div class="case-meta">Case No. ${esc(c.caseNo || 'N/A')} — ${esc(c.plaintiff || '')}${c.attorney ? ' — ' + esc(c.attorney) : ''}</div>` +
           (a.note ? `<div class="case-notes">🗓️ ${esc(a.note)}</div>` : '') +
           (c.notes ? `<div class="case-notes">📝 ${esc(c.notes)}</div>` : '') +
-          (c.phoneNumbers ? `<div class="case-notes">📞 ${linkifyPhones(c.phoneNumbers).replace(/\n/g, '<br>')}</div>` : '') +
+          (c.phoneNumbers ? `<div class="case-notes">📞 ${linkifyPhones(c.phoneNumbers, c).replace(/\n/g, '<br>')}</div>` : '') +
           `<div>` +
           (c.serviceAddress
             ? `<a class="btn primary" style="margin-top:.4rem;display:inline-block;" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(c.serviceAddress)}">Navigate</a> `
@@ -3088,7 +3094,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261120';
+  const ROS_V = '20261121';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

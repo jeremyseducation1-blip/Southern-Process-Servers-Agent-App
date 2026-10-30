@@ -3144,7 +3144,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261123';
+  const ROS_V = '20261124';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();
@@ -3226,7 +3226,8 @@
       onProgress(i + 1, pages.length);
       const { data } = await worker.recognize(pages[i]);
       const rec = window.ROSParser.parsePage(data.text);
-      if (!rec.docket) {
+      rec.sourceFile = file.name; rec.page = i + 1; rec.pageCount = pages.length; rec.text = data.text;
+      if (!rec.docket && rec.isReturn) {
         try {
           const d = await readDocketCorner(worker, pages[i]);
           if (d) {
@@ -3237,8 +3238,31 @@
           }
         } catch (_) { /* leave the warning in place */ }
       }
-      rec.sourceFile = file.name; rec.page = i + 1; rec.pageCount = pages.length;
       found.push(rec);
+    }
+    // A Davidson County document is the Return of Service page PLUS the
+    // civil warrant behind it (two or more pages = ONE case). Pages that are
+    // not a Return of Service page belong to the case before them, and give
+    // it the attorney, e-file date and court date.
+    if (found.some((r) => r.isReturn)) {
+      const merged = [];
+      found.forEach((r) => {
+        const cur = merged[merged.length - 1];
+        if (r.isReturn || !cur) { merged.push(Object.assign({}, r, { pages: [r.page] })); return; }
+        cur.pages.push(r.page);
+        ['attorney', 'issueDate', 'courtDate', 'courtTime'].forEach((k) => { if (!cur[k] && r[k]) cur[k] = r[k]; });
+        if (!cur.docket && r.docket) { cur.docket = r.docket; cur.docketSure = r.docketSure; cur.warnings = cur.warnings.filter((w) => !/docket/i.test(w)); }
+      });
+      merged.forEach((r) => {
+        if (r.pages.length > 1) r.pageNote = r.pages.length + ' pages read as one case';
+        if (r.courtTime && !/Court time/i.test(r.notes || '')) r.notes = [r.notes, 'Court time: ' + r.courtTime].filter(Boolean).join(' — ');
+        const missing = [];
+        if (!r.attorney) missing.push('attorney');
+        if (!r.issueDate) missing.push('e-file date');
+        if (!r.courtDate) missing.push('court date');
+        if (missing.length) r.warnings.push('Not found on the pages (fill in if you need it): ' + missing.join(', ') + '.');
+      });
+      return merged;
     }
     return found;
   }
@@ -3315,14 +3339,14 @@
     const dupeNote = dupe ? `<p class="status err">This case number and defendant are already logged and still open.</p>` : '';
     return `<div class="case-row ros-card" data-ros="${idx}">` +
       `<div class="case-style">${e(r.defendant || 'Unknown defendant')}</div>` +
-      `<div class="case-meta">from ${e(r.sourceFile)}${r.pageCount > 1 ? ' (page ' + r.page + ' of ' + r.pageCount + ')' : ''}</div>` +
+      `<div class="case-meta">from ${e(r.sourceFile)}${r.pageNote ? ' — ' + e(r.pageNote) : (r.pageCount > 1 ? ' (page ' + r.page + ' of ' + r.pageCount + ')' : '')}</div>` +
       warn + dupeNote +
       `<label>Case No. <input type="text" class="ros-caseNo" value="${e(r.docket || '')}"></label>` +
       `<label>Plaintiff <input type="text" class="ros-plaintiff" value="${e(r.plaintiff)}"></label>` +
       `<label>Defendant <input type="text" class="ros-defendant" value="${e(r.defendant)}"></label>` +
       `<label>Service address <input type="text" class="ros-address" value="${e(r.serviceAddress)}"></label>` +
       `<label>Phone number(s) <input type="text" class="ros-phone" value="${e(r.phone)}"></label>` +
-      `<label>Attorney of record <input type="text" class="ros-attorney" value="${e(knownAttorney)}" placeholder="Leave blank if you don't know"></label>` +
+      `<label>Attorney of record <input type="text" class="ros-attorney" value="${e(knownAttorney || r.attorney || '')}" placeholder="Leave blank if you don't know"></label>` +
       `<details class="ros-more"${r.courtDate || r.issueDate || r.notes ? ' open' : ''}><summary>Court, county, dates (optional)</summary>` +
       `<label>Court type <select class="ros-court">${courtTypeOptions(r.courtType || 'General Sessions')}</select></label>` +
       `<label>County <input type="text" class="ros-county" value="${e(r.county)}"></label>` +

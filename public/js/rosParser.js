@@ -59,6 +59,70 @@
     return t.join(' ');
   }
 
+  // ---- Details that live on the civil warrant page (page 2+ of a Davidson County document) ----
+  const MONTHS = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  function isoDate(mo, d, y) {
+    mo = Number(mo); d = Number(d); y = Number(y);
+    if (y < 100) y += 2000;
+    if (!(mo >= 1 && mo <= 12 && d >= 1 && d <= 31 && y >= 2020 && y <= 2040)) return '';
+    return `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  // First date found in a snippet: 10/21/2026, 10-21-26, or October 21, 2026.
+  function firstDate(snippet) {
+    let m = /(\d{1,2})\s*[\/\-.]\s*(\d{1,2})\s*[\/\-.]\s*(\d{4}|\d{2})\b/.exec(snippet);
+    if (m) { const v = isoDate(m[1], m[2], m[3]); if (v) return v; }
+    m = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i.exec(snippet);
+    if (m) return isoDate(MONTHS[m[1].toLowerCase()], m[2], m[3]);
+    return '';
+  }
+  function looksLikeName(n) {
+    return n && n.length >= 5 && n.length <= 45 && !/\d/.test(n) &&
+      !/\b(county|court|davidson|plaintiff|defendant|general|sessions|civil|warrant|tennessee|clerk|nashville|attorney|street|suite)\b/i.test(n);
+  }
+  function parseExtras(text) {
+    const t = String(text || '');
+    const out = { attorney: '', issueDate: '', courtDate: '', courtTime: '' };
+
+    // E-file date: "E-FILED 10/21/2026 3:45 PM" (stamp), or "Electronically filed ...".
+    let m = /(?:E[\s\-]*FILED|ELECTRONICALLY\s+FILED|E[\s\-]*FILE\s*DATE)[\s\S]{0,70}/i.exec(t);
+    if (m) out.issueDate = firstDate(m[0]);
+    if (!out.issueDate) { m = /\bFILED\b[\s\S]{0,40}/.exec(t); if (m) out.issueDate = firstDate(m[0]); }
+
+    // Court / hearing date and time.
+    m = /(?:COURT\s*DATE|HEARING|APPEAR|SET\s+FOR|RETURN\s+DATE)[^\n]{0,60}/i.exec(t);
+    if (m) {
+      out.courtDate = firstDate(m[0]);
+      const tm = /(\d{1,2}:\d{2})\s*([AaPp])\.?\s*[Mm]/.exec(m[0]);
+      if (tm) out.courtTime = `${tm[1]} ${tm[2].toUpperCase()}M`;
+    }
+
+    // Plaintiff's attorney: name next to "BPR", or after "Attorney for Plaintiff".
+    const lines = t.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    const nameRe = /([A-Z][A-Za-z.'\-]+(?:\s+[A-Z][A-Za-z.'\-]*){1,3})/;
+    let att = '';
+    for (let i = 0; i < lines.length && !att; i++) {
+      const l = lines[i];
+      let a = /^(?:Plaintiff'?s\s+)?Attorney(?:\s+of\s+Record)?\s*[:\-]\s*(.+)$/i.exec(l);
+      if (a) { const n = nameRe.exec(a[1].replace(/,?\s*(Esq\.?|BPR.*)$/i, '')); if (n && looksLikeName(n[1])) att = n[1]; }
+      if (!att && /BPR/i.test(l)) {
+        const same = nameRe.exec(l.replace(/\(?\s*BPR.*$/i, '').replace(/,?\s*Esq\.?/i, ''));
+        if (same && looksLikeName(same[1])) att = same[1];
+        else if (i > 0) { const prev = nameRe.exec(lines[i - 1].replace(/,?\s*Esq\.?/i, '')); if (prev && looksLikeName(prev[1])) att = prev[1]; }
+      }
+      if (!att && /Attorney\s+for\s+(?:the\s+)?Plaintiff/i.test(l)) {
+        const same = nameRe.exec(l.replace(/Attorney\s+for.*$/i, '').replace(/,?\s*Esq\.?/i, ''));
+        if (same && looksLikeName(same[1])) att = same[1];
+        else if (i > 0) { const prev = nameRe.exec(lines[i - 1].replace(/,?\s*Esq\.?/i, '')); if (prev && looksLikeName(prev[1])) att = prev[1]; }
+      }
+    }
+    out.attorney = att ? titleCase(att) : '';
+    return out;
+  }
+  // The Return of Service cover form (page 1 of a Davidson County document).
+  function isReturnPage(text) {
+    return /RETURN\s*OF\s*SERV|Executed\s+and\s*\/?\s*or\s+Served|Unable\s+to\s+Execute/i.test(String(text || ''));
+  }
+
   function parsePage(text) {
     const lines = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
     const out = { docket: null, docketSure: false, plaintiff: '', defendant: '', serviceAddress: '', phone: '', county: '', courtType: '', warnings: [] };
@@ -111,6 +175,9 @@
     if (cty) out.county = titleCase(cty[1]);
     if (out.docket && /^\d{2}GC/.test(out.docket)) out.courtType = 'General Sessions';
 
+    out.isReturn = isReturnPage(text);
+    Object.assign(out, parseExtras(text));
+
     if (!out.docket) out.warnings.push('Could not read the docket number — type it in.');
     else if (!out.docketSure) out.warnings.push('Check the docket number.');
     if (!out.plaintiff) out.warnings.push('Plaintiff not read.');
@@ -119,7 +186,7 @@
     return out;
   }
 
-  const api = { parsePage, normalizeDocket, findDocket, titleCase, cleanStreet };
+  const api = { parseExtras, isReturnPage, firstDate, parsePage, normalizeDocket, findDocket, titleCase, cleanStreet };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ROSParser = api;
 })(typeof window !== 'undefined' ? window : this);

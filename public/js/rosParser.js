@@ -83,17 +83,30 @@
     const t = String(text || '');
     const out = { attorney: '', issueDate: '', courtDate: '', courtTime: '' };
 
-    // E-file date: "E-FILED 10/21/2026 3:45 PM" (stamp), or "Electronically filed ...".
-    let m = /(?:E[\s\-]*FILED|ELECTRONICALLY\s+FILED|E[\s\-]*FILE\s*DATE)[\s\S]{0,70}/i.exec(t);
-    if (m) out.issueDate = firstDate(m[0]);
-    if (!out.issueDate) { m = /\bFILED\b[\s\S]{0,40}/.exec(t); if (m) out.issueDate = firstDate(m[0]); }
+    // E-file date: the clerk's stamp ("EFILED 10/28/26 12:03 PM CASE NO ...") is
+    // often smudged, so it is checked against the printed "ISSUED 10/28/26" line.
+    const dayDiff = (x, y) => Math.abs((Date.parse(x) - Date.parse(y)) / 86400000);
+    let stamp = '';
+    let m = /(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4})\s*\d{1,2}\s*:?\s*\d{2}\s*[AP]\.?M\s+CASE\s*N/i.exec(t);
+    if (m) stamp = firstDate(m[1]);
+    if (!stamp) { m = /(?:E[\s\-]*FILED|ELECTRONICALLY\s+FILED)[\s\S]{0,40}/i.exec(t); if (m) stamp = firstDate(m[0]); }
+    let issued = '';
+    m = /\bISSUED\s+(\d{1,2}\s*[\/\-.]\s*\d{1,2}\s*[\/\-.]\s*\d{2,4})/i.exec(t);
+    if (m) issued = firstDate(m[1]);
+    out.issueDate = stamp && issued ? (dayDiff(stamp, issued) <= 3 ? stamp : issued) : (stamp || issued);
 
-    // Court / hearing date and time.
-    m = /(?:COURT\s*DATE|HEARING|APPEAR|SET\s+FOR|RETURN\s+DATE)[^\n]{0,60}/i.exec(t);
-    if (m) {
-      out.courtDate = firstDate(m[0]);
-      const tm = /(\d{1,2}:\d{2})\s*([AaPp])\.?\s*[Mm]/.exec(m[0]);
-      if (tm) out.courtTime = `${tm[1]} ${tm[2].toUpperCase()}M`;
+    // Court / hearing date and time: "Set for 09:00am on 11/20/2026" or "on 11/20/2026, at 09:00am".
+    const timeIn = (x) => { const tm = /(\d{1,2}:\d{2})\s*([AaPp])\.?\s*[Mm]/.exec(x); return tm ? `${tm[1].replace(/^0/, '')} ${tm[2].toUpperCase()}M` : ''; };
+    const tries = [
+      /Set\s*for[^\n]{0,60}/i,
+      /\d{1,2}\s*\/\s*\d{1,2}\s*\/\s*\d{4}[\s_,.]{0,12}at\s*\d{1,2}:\d{2}\s*[ap]\.?m/i,
+      /COURT\s*DATE[^\n]{0,60}/i
+    ];
+    for (const re of tries) {
+      const mm = re.exec(t);
+      if (!mm) continue;
+      const d = firstDate(mm[0]);
+      if (d) { out.courtDate = d; out.courtTime = timeIn(mm[0]); break; }
     }
 
     // Plaintiff's attorney: name next to "BPR", or after "Attorney for Plaintiff".
@@ -109,7 +122,12 @@
         if (same && looksLikeName(same[1])) att = same[1];
         else if (i > 0) { const prev = nameRe.exec(lines[i - 1].replace(/,?\s*Esq\.?/i, '')); if (prev && looksLikeName(prev[1])) att = prev[1]; }
       }
-      if (!att && /Attorney\s+for\s+(?:the\s+)?Plaintiff/i.test(l)) {
+      if (!att && /Attorney\s+for\s+(?:the\s+)?Pla\w+/i.test(l)) {
+        // The firm or name is printed on the line above the label.
+        const above = i > 0 ? lines[i - 1].replace(/[_\s]+$/, '').replace(/^[^A-Za-z0-9]+/, '') : '';
+        if (/,\s*(PLLC|LLC|LLP|P\.?C\.?|P\.?A\.?)\b|\bLAW\b|\bATTORNEYS?\b|\bLAW\s+(OFFICE|GROUP|FIRM)/i.test(above) && above.length <= 60 && !/\d/.test(above)) att = above;
+      }
+      if (!att && /Attorney\s+for\s+(?:the\s+)?Pla\w+/i.test(l)) {
         const same = nameRe.exec(l.replace(/Attorney\s+for.*$/i, '').replace(/,?\s*Esq\.?/i, ''));
         if (same && looksLikeName(same[1])) att = same[1];
         else if (i > 0) { const prev = nameRe.exec(lines[i - 1].replace(/,?\s*Esq\.?/i, '')); if (prev && looksLikeName(prev[1])) att = prev[1]; }
@@ -160,8 +178,8 @@
     let street = '', cityLine = '';
     for (const l of scan) {
       if (!street) {
-        const m = /(\d{1,6}[A-Z]?\s+(?:[A-Z0-9.'#\-]+(?=\s|$)\s*)+)/.exec(l.replace(/^[^A-Z0-9]+/, ''));
-        if (m && /[A-Z]{2}/.test(m[1])) { street = cleanStreet(m[1]); continue; }
+        const m = /(\d{1,6}[A-Z]?\s+(?:[A-Z0-9.'#,\-]+(?=\s|$)\s*)+)/.exec(l.replace(/^[^A-Z0-9]+/, ''));
+        if (m && /[A-Z]{2}/.test(m[1])) { street = cleanStreet(m[1].replace(/[,\s]+$/, '')); continue; }
       }
       const c = /([A-Z][A-Z .'\-]+),\s*([A-Z]{2})\s+(\d{5})/.exec(l);
       if (c) { cityLine = `${titleCase(c[1])}, ${c[2]} ${c[3]}`; if (!out.county) { /* county below */ } break; }

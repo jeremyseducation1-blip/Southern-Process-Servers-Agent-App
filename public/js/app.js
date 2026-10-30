@@ -3144,7 +3144,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261124';
+  const ROS_V = '20261125';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();
@@ -3251,7 +3251,7 @@
         if (r.isReturn || !cur) { merged.push(Object.assign({}, r, { pages: [r.page] })); return; }
         cur.pages.push(r.page);
         ['attorney', 'issueDate', 'courtDate', 'courtTime'].forEach((k) => { if (!cur[k] && r[k]) cur[k] = r[k]; });
-        if (!cur.docket && r.docket) { cur.docket = r.docket; cur.docketSure = r.docketSure; cur.warnings = cur.warnings.filter((w) => !/docket/i.test(w)); }
+        if (r.docket && (!cur.docket || (r.docketSure && !cur.docketSure))) { cur.docket = r.docket; cur.docketSure = r.docketSure; cur.warnings = cur.warnings.filter((w) => !/docket/i.test(w)); }
       });
       merged.forEach((r) => {
         if (r.pages.length > 1) r.pageNote = r.pages.length + ' pages read as one case';

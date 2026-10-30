@@ -21,7 +21,17 @@ exports.handler = requireAuth(async (event) => {
       const miles = Math.round(Number(body.miles) * 10) / 10;
       if (!isFinite(miles) || miles <= 0) return { statusCode: 400, body: 'Miles must be a number above 0.' };
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return { statusCode: 400, body: 'A date (YYYY-MM-DD) is required.' };
+      const key = body.key ? String(body.key).slice(0, 200) : '';
+      if (key) {
+        // Auto-logged drives replace themselves instead of piling up.
+        store.trips = store.trips.filter((t) => t.key !== key);
+        if (key.indexOf('route-') === 0) {
+          const day = 'go-' + body.date + '|';
+          store.trips = store.trips.filter((t) => !(t.key && t.key.indexOf(day) === 0));
+        }
+      }
       store.trips.push({
+        key: key || undefined,
         id: Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
         date: body.date,
         miles,

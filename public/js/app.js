@@ -726,6 +726,7 @@
     }
     // No start address: Apple Maps starts from wherever you are.
     window.open(buildMapsUrl(dests, null), '_blank');
+    autoLogMiles('route', dests, 'Auto-logged route');
   });
 
 
@@ -817,6 +818,32 @@
     if (data.code !== 'Ok' || !data.routes || !data.routes[0]) throw new Error('No driving route found between these stops.');
     const legs = data.routes[0].legs.map((l) => l.distance / 1609.344);
     return { total: legs.reduce((s, m) => s + m, 0), legs };
+  }
+
+  // Every drive you start in the app is logged automatically: opening a route
+  // saves the whole route's miles for today; a Go button saves that one leg.
+  // Same route/stop again the same day just replaces its entry (no double count).
+  async function autoLogMiles(key, dests, note) {
+    const st = $('#sortStatus');
+    try {
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Chicago' });
+      if (key === 'route') {
+        // route supersedes any single "Go" legs logged earlier today
+      } else {
+        const { trips } = await loadMileage();
+        if (trips.some((t) => t.key === 'route-' + today)) return; // route already counts these miles
+      }
+      const here = await hereNow();
+      const { total } = await routeMiles([here, ...dests]);
+      if (!(total > 0)) return;
+      await postMileage({
+        action: 'save', date: today, miles: total, stops: dests, estimated: true,
+        note: note || '', key: key === 'route' ? 'route-' + today : 'go-' + today + '|' + dests[0].toLowerCase()
+      });
+      if (st) { st.textContent = `Logged ${total.toFixed(1)} mi to your mileage.`; st.className = 'status ok'; }
+    } catch (err) {
+      if (st) { st.textContent = "Couldn't log miles automatically (" + err.message + '). Use Paperwork → Mileage to add them.'; st.className = 'status err'; }
+    }
   }
 
   function hereNow() {
@@ -973,6 +1000,17 @@
       `https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(next.serviceAddress)}`,
       '_blank'
     );
+    autoLogMiles('go', [next.serviceAddress], 'Auto-logged: next stop');
+  });
+
+  // Go button on a case: log that drive.
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a.go-btn');
+    if (!a) return;
+    try {
+      const addr = decodeURIComponent((a.getAttribute('href').split('daddr=')[1] || ''));
+      if (addr) autoLogMiles('go', [addr], 'Auto-logged: Go to a case');
+    } catch (_) { /* ignore */ }
   });
 
   // Form shown after picking the return PDF. Resolves with
@@ -3106,7 +3144,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261122';
+  const ROS_V = '20261123';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

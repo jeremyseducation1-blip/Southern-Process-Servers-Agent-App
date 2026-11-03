@@ -1013,6 +1013,96 @@
     } catch (_) { /* ignore */ }
   });
 
+
+  // ---- Fix a sent return PDF: type text onto it (e.g. the court date) or replace it, then resend ----
+  async function openFixPdf(c, onDone) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(5,15,40,.6);z-index:2100;display:flex;align-items:flex-start;justify-content:center;overflow:auto;padding:12px;';
+    const fmtCourt = (() => {
+      const d = (c.courtDate || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+      const t = ((c.notes || '').match(/Court time:\s*([0-9:]+\s*[AP]M)/i) || [])[1];
+      return d ? `Court Date: ${d[2]}/${d[3]}/${d[1]}${t ? ' ' + t : ''}` : 'Court Date: ';
+    })();
+    overlay.innerHTML =
+      `<div style="background:#fff;border-radius:14px;padding:14px;width:100%;max-width:560px;">` +
+      `<h3 style="margin:0 0 .3rem;">Fix PDF &amp; resend</h3>` +
+      `<p class="hint">${esc(c.defendant || '')} · ${esc(c.caseNo || '')}. Nothing about the return date, billing or status changes. Kevin gets the corrected PDF marked as a replacement.</p>` +
+      `<p style="margin:.4rem 0;"><b>1. Type onto the current PDF</b></p>` +
+      `<label>Text to add <input type="text" id="fpText" value="${esc(fmtCourt)}"></label>` +
+      `<p class="hint" id="fpHint">Loading the PDF… then tap where the text should go.</p>` +
+      `<div id="fpWrap" style="position:relative;display:none;border:1px solid #ccc;touch-action:manipulation;"><canvas id="fpCanvas" style="width:100%;display:block;"></canvas><span id="fpMark" style="position:absolute;display:none;color:#0d1f73;font:700 12px Helvetica,Arial,sans-serif;white-space:nowrap;pointer-events:none;background:rgba(255,255,160,.5);"></span></div>` +
+      `<button type="button" class="btn primary" id="fpSendStamp" disabled>Add text &amp; send to Kevin</button>` +
+      `<p style="margin:.8rem 0 .3rem;"><b>2. Or use a new scan</b></p>` +
+      `<input type="file" id="fpFile" accept="application/pdf">` +
+      `<button type="button" class="btn secondary" id="fpSendFile">Send new scan to Kevin</button>` +
+      `<p class="status" id="fpStatus"></p>` +
+      `<button type="button" class="btn secondary" id="fpClose">Close</button></div>`;
+    document.body.appendChild(overlay);
+    const q = (sel) => overlay.querySelector(sel);
+    const st = q('#fpStatus');
+    let pos = null;
+    const close = () => overlay.remove();
+    q('#fpClose').addEventListener('click', close);
+
+    const postFix = async (body, btn) => {
+      btn.disabled = true; st.textContent = 'Sending…'; st.className = 'status';
+      try {
+        const res = await fetch('/.netlify/functions/resend-return', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ id: c.id }, body)) });
+        if (!res.ok) throw new Error(await res.text());
+        st.textContent = 'Corrected PDF sent to Kevin and saved on the case.'; st.className = 'status ok';
+        onDone && onDone();
+        setTimeout(close, 1800);
+      } catch (err) {
+        st.textContent = 'Not sent — ' + err.message; st.className = 'status err';
+        btn.disabled = false;
+      }
+    };
+
+    q('#fpSendFile').addEventListener('click', () => {
+      const f = q('#fpFile').files[0];
+      if (!f) { st.textContent = 'Pick the new PDF first.'; st.className = 'status err'; return; }
+      const r = new FileReader();
+      r.onload = () => postFix({ returnPdfBase64: String(r.result).split(',')[1] }, q('#fpSendFile'));
+      r.readAsDataURL(f);
+    });
+    q('#fpSendStamp').addEventListener('click', () => {
+      const text = q('#fpText').value.trim();
+      if (!text || !pos) { st.textContent = 'Type the text and tap where it goes on the page.'; st.className = 'status err'; return; }
+      postFix({ stamp: { text, x: pos.x, y: pos.y, page: 0, size: 0.024 } }, q('#fpSendStamp'));
+    });
+
+    try {
+      const r = await fetch(`/.netlify/functions/get-case-pdf?id=${encodeURIComponent(c.id)}&kind=return`);
+      if (!r.ok) throw new Error(await r.text());
+      const { url } = await r.json();
+      const buf = await (await fetch(url)).arrayBuffer();
+      const canvases = await pdfToCanvases({ arrayBuffer: async () => buf });
+      const cv = q('#fpCanvas'), src = canvases[0];
+      cv.width = src.width; cv.height = src.height;
+      cv.getContext('2d').drawImage(src, 0, 0);
+      q('#fpWrap').style.display = 'block';
+      q('#fpHint').textContent = 'Tap on the page where the text should go (the tap is the top-left of the text).';
+      q('#fpSendStamp').disabled = false;
+      const wrap = q('#fpWrap'), mark = q('#fpMark');
+      const placeMark = () => {
+        if (!pos) return;
+        const w = cv.getBoundingClientRect().width;
+        mark.textContent = q('#fpText').value;
+        mark.style.fontSize = (0.024 * w) + 'px';
+        mark.style.left = (pos.x * 100) + '%'; mark.style.top = (pos.y * 100) + '%';
+        mark.style.display = 'block';
+      };
+      wrap.addEventListener('click', (e) => {
+        const b = cv.getBoundingClientRect();
+        pos = { x: (e.clientX - b.left) / b.width, y: (e.clientY - b.top) / b.height };
+        placeMark();
+      });
+      q('#fpText').addEventListener('input', placeMark);
+    } catch (err) {
+      q('#fpHint').textContent = "Couldn't load the stored PDF (" + err.message + '). You can still send a new scan below.';
+    }
+  }
+
   // Form shown after picking the return PDF. Resolves with
   // { returnDate, returnOutcome, returnNotes, servedDefendants } or null
   // if cancelled. Notes are required unless the outcome is "Served".
@@ -1231,6 +1321,9 @@
         const editReturnBtn = (c.returnSent || c.handedOff)
           ? `<button type="button" class="btn secondary edit-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit return</button>`
           : '';
+        const fixPdfBtn = c.returnPdfPath
+          ? `<button type="button" class="btn secondary fix-pdf-btn" data-id="${c.id}" style="margin-top:.4rem;">Fix PDF &amp; resend to Kevin</button>`
+          : '';
         const viewAffidavitBtn = c.affidavitPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="affidavit" style="margin-top:.4rem;">View affidavit PDF</button>`
           : '';
@@ -1417,7 +1510,7 @@
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `</div>` +
           `<div class="sheet-pane" data-pane="return">` +
-          pill + missingReturnNote + markBtn + viewReturnBtn + editReturnBtn +
+          pill + missingReturnNote + markBtn + viewReturnBtn + fixPdfBtn + editReturnBtn +
           `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `</div>` +
           `<div class="sheet-pane" data-pane="papers">` +
@@ -1755,6 +1848,15 @@
         const c = cases.find((x) => x.id === btn.dataset.id);
         if (!c) return;
         if (await openMeetingForm({ c })) refreshSchedule();
+      });
+    });
+
+    // Fix the return PDF on an already-returned case (add the court date, or
+    // swap in a new scan) and email the corrected copy to Kevin.
+    caseSearchResults.querySelectorAll('.fix-pdf-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = cases.find((x) => x.id === btn.dataset.id);
+        if (c) openFixPdf(c, () => { allCasesCache = null; });
       });
     });
 
@@ -3144,7 +3246,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261125';
+  const ROS_V = '20261126';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

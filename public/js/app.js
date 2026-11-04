@@ -422,7 +422,8 @@
         cam.addEventListener('change', changed(cam, lib));
         lib.addEventListener('change', changed(lib, cam));
       })();
-      setTimeout(() => { const t = formEl.querySelector('.attempt-log-note'); if (t) t.focus(); }, 50);
+      revealForm(formEl);
+      setTimeout(() => { const t = formEl.querySelector('.attempt-log-note'); if (t) t.focus({ preventScroll: true }); }, 50);
 
       formEl.querySelector('.attempt-log-save-btn').addEventListener('click', async () => {
         const saveBtn = formEl.querySelector('.attempt-log-save-btn');
@@ -1597,6 +1598,7 @@
           <p class="status edit-return-status"></p>
         `;
         formEl.hidden = false;
+        revealForm(formEl);
 
         formEl.querySelector('.edit-return-cancel-btn').addEventListener('click', () => {
           formEl.hidden = true;
@@ -1781,6 +1783,7 @@
           <p class="status edit-status"></p>
         `;
         formEl.hidden = false;
+        revealForm(formEl);
 
         formEl.querySelector('.cancel-edit-btn').addEventListener('click', () => {
           formEl.hidden = true;
@@ -3040,7 +3043,85 @@
   }
 
   // Called after every render of the Cases list.
+
+  // ---- Drafts: what you've typed in a note / edit form survives leaving the screen ----
+  const DRAFT_PFX = 'sps_draft|';
+  const DRAFT_TTL = 3 * 24 * 60 * 60 * 1000;
+  function draftKey(el) {
+    try {
+      if (!el || !/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.type === 'file' || el.type === 'checkbox') return null;
+      const cls = String(el.className || '').split(/\s+/)[0];
+      if (el.classList.contains('note-input')) {
+        const b = el.closest('.sheet-pane') && el.closest('.sheet-pane').querySelector('.note-add-btn');
+        return b ? `note|${b.dataset.id}|note` : null;
+      }
+      const map = [['[data-edit-form]', 'editForm', 'edit'], ['[data-edit-return-form]', 'editReturnForm', 'editreturn'], ['[data-attempt-form]', 'attemptForm', 'attempt']];
+      for (const [sel, attr, kind] of map) {
+        const f = el.closest(sel);
+        if (f && cls) return `${kind}|${f.dataset[attr]}|${cls}`;
+      }
+    } catch (_) { /* ignore */ }
+    return null;
+  }
+  document.addEventListener('input', (e) => {
+    const key = draftKey(e.target);
+    if (!key) return;
+    try {
+      if (e.target.value === e.target.defaultValue) localStorage.removeItem(DRAFT_PFX + key);
+      else localStorage.setItem(DRAFT_PFX + key, JSON.stringify({ v: e.target.value, t: Date.now() }));
+    } catch (_) { /* ignore */ }
+  });
+  function restoreDrafts(root) {
+    let restored = 0;
+    root.querySelectorAll('input, textarea, select').forEach((el) => {
+      const key = draftKey(el);
+      if (!key) return;
+      try {
+        const d = JSON.parse(localStorage.getItem(DRAFT_PFX + key) || 'null');
+        if (!d) return;
+        if (Date.now() - d.t > DRAFT_TTL) { localStorage.removeItem(DRAFT_PFX + key); return; }
+        if (d.v !== el.value) { el.value = d.v; restored++; }
+      } catch (_) { /* ignore */ }
+    });
+    return restored;
+  }
+  function clearDrafts(kind, id) {
+    try {
+      const pre = `${DRAFT_PFX}${kind}|${id}|`;
+      Object.keys(localStorage).filter((k) => k.indexOf(pre) === 0).forEach((k) => localStorage.removeItem(k));
+    } catch (_) { /* ignore */ }
+  }
+  // A successful save of a note / attempt / edit throws that draft away.
+  const DRAFT_ENDPOINTS = { 'add-note': 'note', 'save-attempt': 'attempt', 'edit-return': 'editreturn', 'update-case': 'edit' };
+  (function () {
+    const prev = window.fetch.bind(window);
+    window.fetch = async function (url, init) {
+      const res = await prev(url, init);
+      try {
+        const m = /\/functions\/([a-z-]+)/.exec(String(url));
+        if (m && DRAFT_ENDPOINTS[m[1]] && res.ok && init && typeof init.body === 'string') {
+          const id = JSON.parse(init.body).id;
+          if (id) clearDrafts(DRAFT_ENDPOINTS[m[1]], id);
+        }
+      } catch (_) { /* ignore */ }
+      return res;
+    };
+  })();
+  // After opening an edit form: bring back unsaved typing, scroll to it, and flash it so it's obvious.
+  function revealForm(formEl) {
+    const n = restoreDrafts(formEl);
+    if (n) {
+      const st = formEl.querySelector('.status');
+      if (st) { st.textContent = 'Brought back what you had typed but not saved.'; st.className = 'status'; }
+    }
+    formEl.classList.remove('form-flash');
+    void formEl.offsetWidth;
+    formEl.classList.add('form-flash');
+    setTimeout(() => { try { formEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { formEl.scrollIntoView(); } }, 60);
+  }
+
   function wireCaseSheets() {
+    restoreDrafts(caseSearchResults);
     caseSearchResults.querySelectorAll('[data-open-case]').forEach((el) => {
       const open = () => openSheet(el.dataset.openCase);
       el.addEventListener('click', open);
@@ -3255,7 +3336,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261127';
+  const ROS_V = '20261128';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

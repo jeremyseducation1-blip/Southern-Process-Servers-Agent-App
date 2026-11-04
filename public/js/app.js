@@ -2737,9 +2737,18 @@
   // Phone numbers in free text become tap-to-call links.
   // The Text button opens Messages with a ready-made message to the defendant.
   function textBody(c) {
-    const who = (c && c.defendant) ? c.defendant : '';
-    const pl = (c && c.plaintiff) ? ` on behalf of ${c.plaintiff}` : '';
-    return `Hello${who ? ' ' + who : ''}, this is Jeremy with Southern Process Servers. I have legal papers for you${pl}. Please reply to this text or call me back so we can arrange a time to get them to you. Thank you.`;
+    c = c || {};
+    const first = String(c.defendant || '').trim().split(/\s+/)[0] || '';
+    const isBusiness = /\b(llc|inc|corp|co|company|association|bank|pc|plc|llp|lp|trust|properties|management)\b/i.test(c.defendant || '');
+    const name = first && !isBusiness ? first.charAt(0).toUpperCase() + first.slice(1).toLowerCase() : '';
+    const doc = String(c.caseType || '').trim().toLowerCase();
+    const thing = doc && doc !== 'letter' ? doc : 'legal papers';
+    const article = thing === 'legal papers' ? '' : (/^[aeiou]/.test(thing) ? 'an ' : 'a ');
+    const filed = c.plaintiff ? ` that's been filed against you by ${c.plaintiff}` : '';
+    const d = String(c.courtDate || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
+    const court = d ? ` so you can contact their attorney before the ${Number(d[1])}/${Number(d[2])} court date` : '';
+    const what = thing === 'legal papers' ? 'the papers' : `the ${thing}`;
+    return `Hey${name ? ' ' + name : ''}, this is Jeremy with Southern Process Servers. I'm reaching out because I have ${article}${thing}${filed}. Please reply to this text or call me back so we can arrange a time to get ${what} to you${court}. Thank you.`;
   }
   function linkifyPhones(text, c) {
     return esc(text).replace(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g, (m) => {
@@ -3246,7 +3255,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261126';
+  const ROS_V = '20261127';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

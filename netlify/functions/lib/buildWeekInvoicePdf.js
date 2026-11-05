@@ -67,14 +67,59 @@ function attorneyLastName(attorney) {
 // page and the PDF can never disagree. Every completed return counts
 // (Served, Return Not Found, Return Requested per Plaintiff alike); only a
 // later defendant on an already-billed case number is listed as "not billable".
+// "First + last name" of a person, ignoring middle names/initials, case and
+// punctuation, so "David J. Campbell" and "DAVID CAMPBELL" are the same person.
+function personKey(name) {
+  const t = String(name || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter(Boolean);
+  if (t.length <= 1) return t.join('');
+  return t[0] + ' ' + t[t.length - 1];
+}
+function namesOf(c) {
+  const out = new Set();
+  if (c.defendant) out.add(personKey(c.defendant));
+  (c.defendants || []).forEach((d) => { if (d && d.name) out.add(personKey(d.name)); });
+  return out;
+}
+
+// The $60 is per case number -- but if the SAME defendant comes back on the
+// same case number (a reissued/alias paper), that is a new job and is billed
+// again. So every paper gets a "billing round": papers on one case number
+// share a round until one repeats a defendant already in that round, which
+// starts the next round. Each round is billed once, on its first completion.
+function assignRounds(allCases) {
+  const byCaseNo = new Map();
+  allCases.forEach((c) => {
+    if (!c.caseNo) return;
+    if (!byCaseNo.has(c.caseNo)) byCaseNo.set(c.caseNo, []);
+    byCaseNo.get(c.caseNo).push(c);
+  });
+  const roundOf = new Map();
+  byCaseNo.forEach((papers, caseNo) => {
+    papers
+      .slice()
+      .sort((a, b) => String(a.intakeDate || '').localeCompare(String(b.intakeDate || '')) || String(a.id).localeCompare(String(b.id)))
+      .reduce((st, c) => {
+        const names = namesOf(c);
+        const repeats = Array.from(names).some((n) => n && st.seen.has(n));
+        if (repeats) { st.round += 1; st.seen = new Set(); }
+        names.forEach((n) => st.seen.add(n));
+        roundOf.set(c, `${caseNo}#${st.round}`);
+        return st;
+      }, { round: 0, seen: new Set() });
+  });
+  return roundOf;
+}
+
 function splitWeek(allCases, weekKey) {
+  const roundOf = assignRounds(allCases);
   const firstCompletedDateByCase = new Map();
   allCases.forEach((c) => {
     const bd = billingDate(c);
     if (!bd || !c.caseNo) return;
-    const existing = firstCompletedDateByCase.get(c.caseNo);
+    const key = roundOf.get(c);
+    const existing = firstCompletedDateByCase.get(key);
     if (!existing || bd < existing) {
-      firstCompletedDateByCase.set(c.caseNo, bd);
+      firstCompletedDateByCase.set(key, bd);
     }
   });
 
@@ -94,10 +139,11 @@ function splitWeek(allCases, weekKey) {
     .slice()
     .sort((a, b) => new Date(billingDate(a)) - new Date(billingDate(b)))
     .forEach((c) => {
-      const firstDate = firstCompletedDateByCase.get(c.caseNo);
-      const isFirstForCase = firstDate === billingDate(c) && !seenBilledCaseNo.has(c.caseNo);
+      const key = roundOf.get(c);
+      const firstDate = firstCompletedDateByCase.get(key);
+      const isFirstForCase = firstDate === billingDate(c) && !seenBilledCaseNo.has(key);
       if (isFirstForCase) {
-        seenBilledCaseNo.add(c.caseNo);
+        seenBilledCaseNo.add(key);
         billable.push(c);
       } else {
         notBillable.push({ c, reason: 'Already billed for this case' });

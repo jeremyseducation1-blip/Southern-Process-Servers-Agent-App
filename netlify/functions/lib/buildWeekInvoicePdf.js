@@ -155,7 +155,7 @@ async function buildWeekInvoicePdf(weekKey) {
   y -= 20;
 
   // Outcome breakdown of the billed cases (adds up to the "N cases @ $60"
-  // line; already-billed repeats are listed separately below), e.g. "7 Served   8 Return Not Found   1 Return
+  // line; repeats are not on the invoice), e.g. "7 Served   8 Return Not Found   1 Return
   // Requested per Plaintiff". Outcomes with none this week are left out.
   const outcomeCounts = new Map();
   billable.forEach((c) => {
@@ -224,12 +224,8 @@ async function buildWeekInvoicePdf(weekKey) {
   page.drawText(totalText, { x: right - totalWidth, y, size: 14, font: bold });
   y -= 36;
 
-  if (notBillable.length) {
-    ensureRoom(30);
-    page.drawText('Not billable (for the record only):', { x: left, y, size: 11, font: bold, color: rgb(0.4, 0.4, 0.4) });
-    y -= 20;
-    notBillable.forEach(({ c, reason }) => drawCaseLine(c, reason, false, true));
-  }
+  // Repeats (a later defendant on an already-billed case number) are left off
+  // the invoice entirely -- they are not charged and not listed.
 
   const pdfBytes = await doc.save();
   return {

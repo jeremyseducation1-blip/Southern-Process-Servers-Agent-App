@@ -1207,7 +1207,7 @@
       const html = weeks
         .map((w) => {
           const parts = Object.keys(w.byOutcome || {}).map((o) => `${w.byOutcome[o]} ${o}`).join(' · ');
-          const rep = w.notBillableCount ? ` · ${w.notBillableCount} repeat${w.notBillableCount === 1 ? '' : 's'} not billed` : '';
+          const rep = '';
           return (
             `<button type="button" class="week-btn" data-week="${esc(w.week)}">` +
             `<span class="week-btn-label">${esc(w.label)}<small style="display:block;font-weight:400;opacity:.8;">${esc(parts)}${esc(rep)}</small></span>` +
@@ -3336,7 +3336,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261128';
+  const ROS_V = '20261129';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

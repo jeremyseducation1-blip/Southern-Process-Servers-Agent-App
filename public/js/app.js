@@ -944,6 +944,50 @@
       year: sum((t) => t.date.startsWith(today.slice(0, 4)))
     };
   }
+
+  // ---- Call & text log: tapping Call or Text on a defendant's number is stamped on the case ----
+  const fmtPhone = (d) => { d = String(d || '').replace(/\D/g, '').slice(-10); return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : d; };
+  const fmtWhen = (iso) => new Date(iso).toLocaleString('en-US', { timeZone: 'America/Chicago', weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[data-contact]');
+    if (!a || !a.dataset.case) return;
+    // keepalive lets the request finish even though Phone / Messages takes over the screen.
+    try {
+      fetch('/.netlify/functions/log-contact', {
+        method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: a.dataset.case, type: a.dataset.contact, number: a.dataset.num })
+      }).catch(() => {});
+    } catch (_) { /* ignore */ }
+  }, true);
+  function contactLogHtml(c) {
+    const log = (c.contactLog || []).slice().reverse();
+    if (!log.length) return '';
+    return `<div class="info-card"><div class="k">CALLS &amp; TEXTS</div><div class="v" style="font-weight:500;">` +
+      log.slice(0, 8).map((x) => `<div>${x.type === 'text' ? '💬 Texted' : '📞 Called'} ${esc(fmtPhone(x.number))}<br><span class="hint">${esc(fmtWhen(x.at))}</span></div>`).join('') +
+      (log.length > 8 ? `<div class="hint">+ ${log.length - 8} earlier — see Paperwork → Call &amp; text log</div>` : '') +
+      `</div></div>`;
+  }
+  async function renderContactLog() {
+    const box = $('#contactLogList');
+    box.textContent = 'Loading…';
+    try {
+      const res = await fetch('/.netlify/functions/list-contacts');
+      if (!res.ok) throw new Error(await res.text());
+      const { contacts } = await res.json();
+      const q = ($('#contactLogSearch').value || '').toLowerCase().trim();
+      const qd = q.replace(/\D/g, '');
+      const rows = contacts.filter((x) => !q || `${x.defendant} ${x.caseNo} ${x.plaintiff}`.toLowerCase().includes(q) || (qd && x.number.includes(qd)));
+      box.innerHTML = rows.length
+        ? rows.map((x) => `<div class="case-row"><div class="case-style">${x.type === 'text' ? '💬 Text' : '📞 Call'} to ${esc(fmtPhone(x.number))}</div>` +
+            `<div class="case-meta">${esc(fmtWhen(x.at))}<br>${esc(x.defendant || 'Unknown')} · ${esc(x.caseNo)}${x.plaintiff ? ' · ' + esc(x.plaintiff) : ''}</div></div>`).join('')
+        : '<p class="hint">No calls or texts logged' + (q ? ' for that search' : ' yet') + '.</p>';
+    } catch (err) {
+      box.innerHTML = `<p class="status err">Couldn't load the log (${esc(err.message)}).</p>`;
+    }
+  }
+  $('#loadContactLogBtn').addEventListener('click', renderContactLog);
+  $('#contactLogSearch').addEventListener('input', () => { clearTimeout(renderContactLog.t); renderContactLog.t = setTimeout(renderContactLog, 300); });
+
   async function renderMileageList() {
     const out = $('#mileageList');
     out.innerHTML = '<p class="hint">Loading…</p>';
@@ -1452,9 +1496,9 @@
         const goLink = addr
           ? `<a class="go-btn" target="_blank" rel="noopener" href="https://maps.apple.com/?dirflg=d&daddr=${encodeURIComponent(addr)}">Go</a>`
           : '';
-        const phoneTap = c.phoneNumbers
+        const phoneTap = (c.phoneNumbers
           ? `<div class="info-card"><div class="k">PHONE</div><div class="v">${linkifyPhones(c.phoneNumbers, c).replace(/\n/g, '<br>')}</div></div>`
-          : '';
+          : '') + contactLogHtml(c);
         const notesCard = (c.notes || c.returnNotes)
           ? `<div class="info-card"><div class="k">NOTES</div><div class="v" style="font-weight:500;white-space:pre-wrap;">` +
             (c.notes ? esc(c.notes) : '') +
@@ -2756,7 +2800,8 @@
   function linkifyPhones(text, c) {
     return esc(text).replace(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g, (m) => {
       const digits = m.replace(/\D/g, '');
-      return digits.length >= 10 ? `<a href="tel:${digits}">${m}</a> <a class="text-link" href="sms:${digits}&body=${encodeURIComponent(textBody(c))}">💬 Text</a>` : m;
+      const cid = c && c.id ? ` data-case="${esc(c.id)}"` : '';
+      return digits.length >= 10 ? `<a href="tel:${digits}" data-contact="call" data-num="${digits}"${cid}>${m}</a> <a class="text-link" href="sms:${digits}&body=${encodeURIComponent(textBody(c))}" data-contact="text" data-num="${digits}"${cid}>💬 Text</a>` : m;
     });
   }
 
@@ -3336,7 +3381,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261130';
+  const ROS_V = '20261131';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

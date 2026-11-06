@@ -105,6 +105,14 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   const captionTop = y;
   const plaintiffName = caseInfo.plaintiff || '';
   const defendantName = caseInfo.defendant || '';
+  // Every defendant on the case goes on the affidavit, not just the first.
+  const allNames = [];
+  [defendantName, ...((caseInfo.defendants || []).map((d) => (typeof d === 'string' ? d : d && d.name)))]
+    .map((n) => String(n || '').trim())
+    .filter(Boolean)
+    .forEach((n) => { if (!allNames.some((x) => x.toLowerCase() === n.toLowerCase())) allNames.push(n); });
+  if (!allNames.length) allNames.push('');
+  const multi = allNames.length > 1;
   const nameIndent = left + 90;
 
   // Plaintiff name (underlined) + "Plaintiff,"
@@ -119,15 +127,17 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   y -= 18;
 
   // Defendant name (underlined) + "Defendant."
-  text(defendantName, nameIndent, 11, font);
-  underline(nameIndent - 10, 260, y);
-  y -= 18;
-  text('Defendant.', left + 70, 11, font);
+  allNames.forEach((n, i) => {
+    text(n, nameIndent, 11, font);
+    underline(nameIndent - 10, 260, y);
+    y -= 18;
+  });
+  text(multi ? 'Defendants.' : 'Defendant.', left + 70, 11, font);
 
   // Bracket -- a ")" on each of the five caption lines, plus the case
   // number vertically centered against it, same as the paper form.
   const bracketX = 470;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 5 + (allNames.length - 1); i++) {
     page.drawText(')', { x: bracketX, y: captionTop - i * 18, size: 12, font });
   }
   page.drawText(`Case No: ${caseInfo.caseNo || ''}`, {
@@ -179,9 +189,12 @@ async function buildAffidavitPdf({ caseInfo, attempts, status, signatureDataUrl,
   const valueX = left + 210;
   const valueWidth = right - valueX;
 
-  text('Defendant:', labelX, 11, font);
-  text(defendantName, valueX, 11, font);
-  y -= 18;
+  text(multi ? 'Defendants:' : 'Defendant:', labelX, 11, font);
+  const nameLines = wrapText(allNames.join('; '), font, 11, valueWidth);
+  nameLines.forEach((ln, i) => {
+    text(ln, valueX, 11, font);
+    y -= i < nameLines.length - 1 ? 15 : 18;
+  });
 
   text('Location/Address of Service:', labelX, 11, font);
   const [street, cityStateZip] = splitAddress(caseInfo.serviceAddress || '');

@@ -118,7 +118,11 @@
     state.signature = { dataUrl: pad.toDataURL() };
     localStorage.setItem('serverSignature', JSON.stringify(state.signature));
     refreshSigPreview();
-    $('#sigSetupCard').querySelector('h3').scrollIntoView({ behavior: 'smooth' });
+    const ss = $('#sigSaveStatus');
+    if (ss) { ss.textContent = '✓ Signature saved on this phone.'; ss.className = 'status ok'; }
+    if (typeof affidavitStatus !== 'undefined' && affidavitStatus.className.indexOf('err') !== -1) {
+      affidavitStatus.textContent = ''; affidavitStatus.className = 'status';
+    }
   });
 
   $('#goSetupSig')?.addEventListener('click', (e) => {
@@ -2511,7 +2515,6 @@
   // that doesn't match the form as it stands now.
   function invalidatePreview() {
     previewedPdfBase64 = null;
-    completeBtn.disabled = true;
     affidavitPreviewStage.hidden = true;
     if (previewObjectUrl) {
       URL.revokeObjectURL(previewObjectUrl);
@@ -2580,7 +2583,6 @@
         attemptsCheckStatus.textContent = 'One of the logged attempt dates is in the future — fix it in Search Cases (Edit) before a status can be selected.';
         attemptsCheckStatus.className = 'status warn';
         sigBlock.hidden = true;
-        previewAffidavitBtn.disabled = true;
       } else if (validAttempts) {
         checkedCaseAttempts = attempts;
         statusSelect.disabled = false;
@@ -2600,7 +2602,6 @@
         statusSelect.disabled = true;
         statusSelect.value = '';
         sigBlock.hidden = true;
-        previewAffidavitBtn.disabled = true;
         attemptsCheckStatus.textContent = overrideChecked
           ? `No valid attempts logged yet for ${caseNo} — at least one is needed even with the override.`
           : `${loggedCount} of 3 attempts logged for ${caseNo} so far — log the rest from Search Cases, check the override above, or check again once done.`;
@@ -2619,7 +2620,6 @@
     if (statusSelect.value) {
       sigBlock.hidden = false;
       refreshSigPreview();
-      previewAffidavitBtn.disabled = !(state.signature && state.signature.dataUrl);
       if (!state.signature) {
         affidavitStatus.textContent = 'Set up your signature below before completing.';
         affidavitStatus.className = 'status warn';
@@ -2629,7 +2629,6 @@
       }
     } else {
       sigBlock.hidden = true;
-      previewAffidavitBtn.disabled = true;
     }
   });
 
@@ -2663,10 +2662,17 @@
     };
   }
 
+  // Says exactly what's missing instead of leaving a dead button.
+  function affidavitMissing() {
+    if (!checkedCaseAttempts || !checkedCaseAttempts.length) return 'First tap "Check attempts" (above) for this case.';
+    if (!statusSelect.value) return 'Pick a status above (served, not found, etc.).';
+    if (!state.signature || !state.signature.dataUrl) return 'Draw your signature below and tap "Save signature" first.';
+    return '';
+  }
   previewAffidavitBtn.addEventListener('click', async () => {
-    if (!statusSelect.value) return;
-    if (!state.signature || !state.signature.dataUrl) {
-      affidavitStatus.textContent = 'No saved signature — set one up below first.';
+    const missing = affidavitMissing();
+    if (missing) {
+      affidavitStatus.textContent = missing;
       affidavitStatus.className = 'status err';
       return;
     }
@@ -2706,8 +2712,8 @@
 
       completeBtn.disabled = false;
       affidavitStatus.textContent = returnPdfBase64
-        ? 'Preview ready below — check it over, then send. The already-attached return will be bundled in.'
-        : 'Preview ready below — check it over, then send.';
+        ? 'Preview ready below — check it over, then tap "Send affidavit to Kevin". The already-attached return will be bundled in.'
+        : 'Preview ready below — check it over, then tap "Send affidavit to Kevin".';
       affidavitStatus.className = 'status ok';
     } catch (err) {
       affidavitStatus.textContent = 'Failed to generate preview — try again. (' + err.message + ')';
@@ -2718,10 +2724,15 @@
   });
 
   completeBtn.addEventListener('click', async () => {
-    if (!statusSelect.value || !previewedPdfBase64) return;
-    if (!state.signature || !state.signature.dataUrl) {
-      affidavitStatus.textContent = 'No saved signature — set one up below first.';
+    const missing = affidavitMissing();
+    if (missing) {
+      affidavitStatus.textContent = missing;
       affidavitStatus.className = 'status err';
+      return;
+    }
+    if (!previewedPdfBase64) {
+      // Nothing previewed yet: build the preview first so you see exactly what goes out.
+      previewAffidavitBtn.click();
       return;
     }
 
@@ -3481,7 +3492,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261133';
+  const ROS_V = '20261134';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

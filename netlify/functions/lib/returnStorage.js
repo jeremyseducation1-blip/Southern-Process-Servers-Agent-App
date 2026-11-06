@@ -77,7 +77,28 @@ async function getAttemptPhotoUrl(path) {
   return getCasePdfUrl('attempt-photos', path);
 }
 
+// General photos on a case (as many as needed): the door, the property, a
+// vehicle, a screenshot -- anything worth keeping with the paper.
+async function uploadCasePhoto(id, photoId, imageBuffer, contentType) {
+  const ext = contentType === 'image/png' ? 'png' : 'jpg';
+  return uploadCaseFile('case-photos', `${id}-photo-${photoId}`, imageBuffer, contentType, ext);
+}
+async function getCasePhotoUrl(path) {
+  const sb = getSupabaseClient();
+  const { data, error } = await sb.storage.from('case-photos').createSignedUrl(path, 60 * 30);
+  if (error) throw new Error(error.message);
+  return data.signedUrl;
+}
+async function deleteCasePhoto(path) {
+  const sb = getSupabaseClient();
+  const { error } = await sb.storage.from('case-photos').remove([path]);
+  if (error) throw new Error(error.message);
+}
+
 module.exports = {
+  uploadCasePhoto,
+  getCasePhotoUrl,
+  deleteCasePhoto,
   uploadReturnPdf,
   uploadAffidavitPdf,
   getReturnPdfUrl,

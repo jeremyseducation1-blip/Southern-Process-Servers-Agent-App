@@ -1538,6 +1538,7 @@
           `<button type="button" class="sheet-tab" data-tab="attempts">Attempts</button>` +
           `<button type="button" class="sheet-tab" data-tab="return">Return</button>` +
           `<button type="button" class="sheet-tab" data-tab="papers">Papers</button>` +
+          `<button type="button" class="sheet-tab" data-tab="photos">Photos${(c.photos || []).length ? ` (${c.photos.length})` : ''}</button>` +
           `<button type="button" class="sheet-tab" data-tab="notes">Notes${unreadNotes(c).length ? ` <span class="note-count">${unreadNotes(c).length}</span>` : ''}</button>` +
           `</div>` +
           `<div class="sheet-body">` +
@@ -1560,6 +1561,15 @@
           `</div>` +
           `<div class="sheet-pane" data-pane="papers">` +
           noPapers + viewAffidavitBtn + affidavitBtn + markAffidavitSentBtn +
+          `</div>` +
+          `<div class="sheet-pane" data-pane="photos">` +
+          `<div class="photo-actions"><label class="btn secondary photo-pick">📷 Take photo<input type="file" accept="image/*" capture="environment" class="case-photo-input" data-id="${esc(c.id)}" hidden></label>` +
+          `<label class="btn secondary photo-pick">🖼 Choose photos<input type="file" accept="image/*" multiple class="case-photo-input" data-id="${esc(c.id)}" hidden></label></div>` +
+          `<p class="status case-photo-status"></p>` +
+          `<div class="photo-grid" data-photo-grid="${esc(c.id)}">${(c.photos || []).slice().reverse().map((ph) =>
+            `<div class="photo-cell" data-photo="${esc(ph.id)}"><div class="case-photo-wrap" data-id="${esc(c.id)}" data-photo="${esc(ph.id)}"><span class="attempt-thumb-hint">Loading…</span></div>` +
+            `<div class="photo-meta">${esc(new Date(ph.at).toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))} · <a href="#" class="delete-photo-link" data-id="${esc(c.id)}" data-photo="${esc(ph.id)}">Delete</a></div></div>`).join('')}</div>` +
+          ((c.photos || []).length ? '' : `<p class="hint photo-empty">No photos yet. Take one or choose several from your library.</p>`) +
           `</div>` +
           `<div class="sheet-pane" data-pane="notes">` +
           `<div class="notes-thread" data-notes-thread="${esc(c.id)}">${notesThreadHtml(c)}</div>` +
@@ -3020,6 +3030,7 @@
     if (body) body.scrollTop = 0;
     if (tab === 'notes') markNotesRead(id);
     loadAttemptThumbs(row);
+    if (tab === 'photos') loadCasePhotos(row);
     return true;
   }
 
@@ -3165,7 +3176,95 @@
     setTimeout(() => { try { formEl.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (_) { formEl.scrollIntoView(); } }, 60);
   }
 
+
+  // ---- Photos on a case: as many as you want, from the camera or the library ----
+  function shrinkImage(file, maxW, q) {
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const sc = Math.min(1, maxW / Math.max(img.width, img.height));
+        const cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', q));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read that picture')); };
+      img.src = url;
+    });
+  }
+  async function loadCasePhotos(root) {
+    if (!root) return;
+    for (const w of root.querySelectorAll('.case-photo-wrap')) {
+      if (w.querySelector('img') || w.dataset.loading) continue;
+      w.dataset.loading = '1';
+      try {
+        const res = await fetch(`/.netlify/functions/get-case-photo?id=${encodeURIComponent(w.dataset.id)}&photo=${encodeURIComponent(w.dataset.photo)}`);
+        if (!res.ok) throw new Error(await res.text());
+        const { url } = await res.json();
+        w.innerHTML = `<a href="${esc(url)}" target="_blank" rel="noopener"><img class="case-photo" loading="lazy" alt="Case photo" src="${esc(url)}"></a>`;
+      } catch (err) {
+        w.innerHTML = '<span class="attempt-thumb-hint">Photo not available</span>';
+        delete w.dataset.loading;
+      }
+    }
+  }
+  function wireCasePhotos() {
+    caseSearchResults.querySelectorAll('.case-photo-input').forEach((inp) => {
+      inp.addEventListener('change', async () => {
+        const pane = inp.closest('.sheet-pane');
+        const st = pane.querySelector('.case-photo-status');
+        const files = Array.from(inp.files || []);
+        inp.value = '';
+        if (!files.length) return;
+        let ok = 0;
+        for (let i = 0; i < files.length; i++) {
+          st.textContent = `Uploading ${i + 1} of ${files.length}…`; st.className = 'status';
+          try {
+            const image = await shrinkImage(files[i], 1800, 0.82);
+            const res = await fetch('/.netlify/functions/add-case-photo', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: inp.dataset.id, image, takenAt: files[i].lastModified ? new Date(files[i].lastModified).toISOString() : null })
+            });
+            if (!res.ok) throw new Error(await res.text());
+            const { photo } = await res.json();
+            const grid = pane.querySelector('.photo-grid');
+            const empty = pane.querySelector('.photo-empty'); if (empty) empty.remove();
+            const cell = document.createElement('div');
+            cell.className = 'photo-cell'; cell.dataset.photo = photo.id;
+            cell.innerHTML = `<div class="case-photo-wrap" data-id="${esc(inp.dataset.id)}" data-photo="${esc(photo.id)}"><span class="attempt-thumb-hint">Loading…</span></div><div class="photo-meta">Just now · <a href="#" class="delete-photo-link" data-id="${esc(inp.dataset.id)}" data-photo="${esc(photo.id)}">Delete</a></div>`;
+            grid.insertBefore(cell, grid.firstChild);
+            ok++;
+          } catch (err) {
+            st.textContent = `Photo ${i + 1} didn't upload (${err.message}).`; st.className = 'status err';
+            break;
+          }
+        }
+        if (ok === files.length) { st.textContent = ok === 1 ? 'Photo saved to the case.' : `${ok} photos saved to the case.`; st.className = 'status ok'; }
+        allCasesCache = null;
+        loadCasePhotos(pane);
+      });
+    });
+    // Delete (event delegation so newly added photos work too)
+    caseSearchResults.querySelectorAll('.photo-grid').forEach((grid) => {
+      grid.addEventListener('click', async (e) => {
+        const a = e.target.closest && e.target.closest('.delete-photo-link');
+        if (!a) return;
+        e.preventDefault();
+        if (!confirm('Delete this photo from the case?')) return;
+        try {
+          const res = await fetch('/.netlify/functions/delete-case-photo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: a.dataset.id, photo: a.dataset.photo }) });
+          if (!res.ok) throw new Error(await res.text());
+          a.closest('.photo-cell').remove();
+          allCasesCache = null;
+        } catch (err) { alert("Couldn't delete: " + err.message); }
+      });
+    });
+  }
+
   function wireCaseSheets() {
+    wireCasePhotos();
     restoreDrafts(caseSearchResults);
     caseSearchResults.querySelectorAll('[data-open-case]').forEach((el) => {
       const open = () => openSheet(el.dataset.openCase);
@@ -3182,6 +3281,7 @@
         if (body) body.scrollTop = 0;
         if (b.dataset.tab === 'notes') markNotesRead(sheet.closest('[data-case-row]').dataset.caseRow);
         if (b.dataset.tab === 'attempts') loadAttemptThumbs(sheet);
+        if (b.dataset.tab === 'photos') loadCasePhotos(sheet);
       });
     });
     caseSearchResults.querySelectorAll('.note-add-btn').forEach((btn) => {
@@ -3381,7 +3481,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261131';
+  const ROS_V = '20261132';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

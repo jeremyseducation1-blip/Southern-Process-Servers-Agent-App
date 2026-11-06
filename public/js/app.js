@@ -2805,7 +2805,7 @@
     const d = String(c.courtDate || '').match(/^\d{4}-(\d{2})-(\d{2})$/);
     const court = d ? ` so you can contact their attorney before the ${Number(d[1])}/${Number(d[2])} court date` : '';
     const what = thing === 'legal papers' ? 'the papers' : `the ${thing}`;
-    return `Hey${name ? ' ' + name : ''}, this is Jeremy with Southern Process Servers. I'm reaching out because I have ${article}${thing}${filed}. Please reply to this text or call me back so we can arrange a time to get ${what} to you${court}. Thank you.`;
+    return `Hey${name ? ' ' + name : ''}, this is Jeremy. I'm reaching out because I have ${article}${thing}${filed}. Please reply to this text or call me back so we can arrange a time to get ${what} to you${court}. Thank you.`;
   }
   function linkifyPhones(text, c) {
     return esc(text).replace(/(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/g, (m) => {
@@ -3481,7 +3481,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261132';
+  const ROS_V = '20261133';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

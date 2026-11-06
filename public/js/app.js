@@ -2546,6 +2546,11 @@
   // there are 3 valid ones (date + note, no future dates). Attempts
   // themselves are no longer typed here -- this just reads what's
   // already on record for the case currently typed in the Case section.
+  // Ticking/unticking the override re-runs the check right away.
+  $('#fewerAttemptsOverride').addEventListener('change', () => {
+    if ($('#caseNo').value.trim() && $('#defendant').value.trim()) checkAttemptsBtn.click();
+  });
+
   checkAttemptsBtn.addEventListener('click', async () => {
     const caseNo = $('#caseNo').value.trim();
     const defendant = $('#defendant').value.trim();
@@ -3492,7 +3497,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261134';
+  const ROS_V = '20261135';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

@@ -1360,7 +1360,7 @@
             ? `<button type="button" class="btn primary send-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Upload return &amp; send to Kevin</button>` +
               `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}" style="margin-top:.4rem;">Mark returned (no email — already handled outside the app)</button>` +
               `<button type="button" class="btn secondary handoff-btn" data-id="${c.id}" style="margin-top:.4rem;">Given to another agent (off my inventory, not billed)</button>`
-            : '';
+            : `<button type="button" class="btn secondary refile-btn" data-id="${c.id}" style="margin-top:.4rem;">Refile (reopen as a new paper)</button>`;
         const viewReturnBtn = c.returnPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="return" style="margin-top:.4rem;">View return PDF</button>`
           : '';
@@ -2094,6 +2094,33 @@
           alert('Failed — try again. (' + err.message + ')');
           btn.disabled = false;
           btn.textContent = 'Given to another agent (off my inventory, not billed)';
+        }
+      });
+    });
+
+    caseSearchResults.querySelectorAll('.refile-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const c = cases.find((x) => x.id === btn.dataset.id);
+        const issue = prompt(`Refile ${c?.caseNo || 'this case'} as a new open paper.\n\nNew issue date on the refiled paper (YYYY-MM-DD), or leave blank:`, '');
+        if (issue === null) return;
+        const court = prompt('New court date (YYYY-MM-DD), or leave blank:', c?.courtDate || '');
+        if (court === null) return;
+        btn.disabled = true;
+        btn.textContent = 'Refiling…';
+        try {
+          const res = await fetch('/.netlify/functions/refile-case', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: btn.dataset.id, issueDate: issue.trim(), courtDate: court.trim() })
+          });
+          if (!res.ok) throw new Error(await res.text());
+          allCasesCache = null;
+          caseSearchInput.dispatchEvent(new Event('input'));
+          alert('Refiled — it\'s open again and will show on the inventory.');
+        } catch (err) {
+          alert('Failed — try again. (' + err.message + ')');
+          btn.disabled = false;
+          btn.textContent = 'Refile (reopen as a new paper)';
         }
       });
     });
@@ -3497,7 +3524,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261135';
+  const ROS_V = '20261136';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

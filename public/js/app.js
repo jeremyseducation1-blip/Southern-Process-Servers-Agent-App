@@ -2101,10 +2101,17 @@
     caseSearchResults.querySelectorAll('.refile-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const c = cases.find((x) => x.id === btn.dataset.id);
-        const issue = prompt(`Refile ${c?.caseNo || 'this case'} as a new open paper.\n\nNew issue date on the refiled paper (YYYY-MM-DD), or leave blank:`, '');
-        if (issue === null) return;
-        const court = prompt('New court date (YYYY-MM-DD), or leave blank:', c?.courtDate || '');
-        if (court === null) return;
+        let issue = '';
+        let court = '';
+        if (c && (c.issueDate || c.courtDate)) {
+          // Court papers: ask for the new dates. Letters / pre-suit notices have none, so no questions.
+          issue = prompt(`Refile ${c.caseNo || 'this case'} as a new open paper.\n\nNew issue date (YYYY-MM-DD), or leave blank:`, '');
+          if (issue === null) return;
+          court = prompt('New court date (YYYY-MM-DD), or leave blank:', c.courtDate || '');
+          if (court === null) return;
+        } else if (!confirm(`Refile ${c?.caseNo || 'this letter'} as a new open paper?`)) {
+          return;
+        }
         btn.disabled = true;
         btn.textContent = 'Refiling…';
         try {
@@ -3524,7 +3531,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261136';
+  const ROS_V = '20261137';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

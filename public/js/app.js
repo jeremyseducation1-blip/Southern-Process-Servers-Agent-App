@@ -1466,6 +1466,9 @@
         // Alias cases can jump straight to the Affidavit section, with
         // the Case fields auto-filled and attempts already checked --
         // no need to retype the case number/defendant up there manually.
+        const addPastAttemptBtn = sortedAttempts.length >= 3
+          ? ''
+          : `<button type="button" class="btn secondary add-past-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">➕ Add a missed attempt (past date, no GPS)</button>`;
         const affidavitBtn = c.isAlias
           ? `<button type="button" class="btn secondary affidavit-btn" data-id="${c.id}" style="margin-top:.4rem;">Affidavit</button>`
           : '';
@@ -1536,6 +1539,7 @@
           `<div class="sheet-title"><div class="t1">${esc(c.defendant || 'Unknown Defendant')}</div>` +
           `<div class="t2">Case ${esc(c.caseNo || 'N/A')} · ${esc(c.plaintiff || '')}</div></div>${pill}</div>` +
           `${logAttemptBtn}` +
+          `${addPastAttemptBtn}` +
           `</div>` +
           `<div class="sheet-tabs">` +
           `<button type="button" class="sheet-tab" data-tab="info">Info</button>` +
@@ -1731,6 +1735,19 @@
     // ONE button: stamps the visit (GPS + server time) AND creates the
     // attempt, then opens the form so the note goes on that same attempt.
     // If the phone can't give a location, offers to log it without a stamp.
+    // Backfill an attempt that was never logged at the time: pick the date,
+    // write the note. No GPS stamp, and it shows that way on the case.
+    caseSearchResults.querySelectorAll('.add-past-attempt-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = cases.find((x) => x.id === btn.dataset.id);
+        if (!c) return;
+        const have = (c.attempts || []).map((a) => a.n);
+        const n = [1, 2, 3].find((num) => !have.includes(num));
+        if (!n) { alert('This case already has all 3 attempts logged.'); return; }
+        openAttemptForm(c, n, null);
+      });
+    });
+
     caseSearchResults.querySelectorAll('.log-attempt-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const id = btn.dataset.id;
@@ -3531,7 +3548,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261137';
+  const ROS_V = '20261138';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

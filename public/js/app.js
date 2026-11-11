@@ -991,6 +991,45 @@
   }
   $('#loadContactLogBtn').addEventListener('click', renderContactLog);
 
+  // ---------- Affidavit case search ----------
+  // Type a name / case number / address, tap the case, and the affidavit
+  // fields fill in and attempts get checked -- no retyping.
+  (function affidavitSearch() {
+    const input = $('#affSearch');
+    const out = $('#affSearchResults');
+    if (!input || !out) return;
+    let shown = [];
+    let timer = null;
+    const run = async () => {
+      const q = input.value.trim().toLowerCase();
+      if (!q) { out.innerHTML = ''; shown = []; return; }
+      out.innerHTML = '<p class="hint">Searching…</p>';
+      try {
+        const all = await ensureAllCasesLoaded();
+        shown = all.filter((c) => [c.caseNo, c.defendant, c.plaintiff, c.serviceAddress,
+          ...(c.defendants || []).map((d) => d.name)].join(' ').toLowerCase().includes(q)).slice(0, 8);
+        out.innerHTML = shown.length
+          ? shown.map((c, i) =>
+              `<button type="button" class="btn secondary aff-pick" data-i="${i}" style="display:block;width:100%;text-align:left;margin-top:.4rem;">` +
+              `<strong>${esc(c.defendant || 'Unknown')}</strong> · ${esc(c.caseNo || '')}` +
+              `<br><span style="font-weight:500;font-size:.8rem;">${esc(c.plaintiff || '')}${c.status === 'closed' ? ' · closed' : ''}</span></button>`).join('')
+          : '<p class="hint">No matching cases.</p>';
+      } catch (err) {
+        out.innerHTML = '<p class="status err">Search failed — try again.</p>';
+      }
+    };
+    input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(run, 250); });
+    out.addEventListener('click', (e) => {
+      const b = e.target.closest('.aff-pick');
+      if (!b) return;
+      const c = shown[parseInt(b.dataset.i, 10)];
+      if (!c) return;
+      out.innerHTML = `<p class="status ok">✓ ${esc(c.defendant || '')} — ${esc(c.caseNo || '')} loaded.</p>`;
+      input.value = '';
+      jumpToAffidavit(c);
+    });
+  })();
+
   // ---------- Example write-ups library ----------
   // Starter wording to copy and adjust, plus your own saved on this phone.
   // Examples are plain facts of what happened -- always match what really occurred.
@@ -3621,7 +3660,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261140';
+  const ROS_V = '20261141';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

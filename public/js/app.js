@@ -1940,6 +1940,7 @@
           .join(', ');
 
         formEl.innerHTML = `
+          <label>Case number <input type="text" class="edit-caseNo" value="${esc(c.caseNo || '')}"></label>
           <label>Court type <select class="edit-courtType">${courtTypeOptions(c.courtType)}</select></label>
           <label>County <input type="text" class="edit-county" value="${esc(c.county || '')}"></label>
           <label>State <input type="text" class="edit-state" value="${esc(c.state || '')}"></label>
@@ -1995,7 +1996,14 @@
             return prev ? { ...prev, name } : { name, served: false };
           });
 
+          const newCaseNo = formEl.querySelector('.edit-caseNo').value.trim();
+          if (!newCaseNo) {
+            statusEl.textContent = 'Case number can\'t be blank.';
+            statusEl.className = 'status edit-status err';
+            return;
+          }
           const fields = {
+            caseNo: newCaseNo,
             courtType: formEl.querySelector('.edit-courtType').value,
             county: formEl.querySelector('.edit-county').value.trim(),
             state: formEl.querySelector('.edit-state').value.trim(),
@@ -3660,7 +3668,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261141';
+  const ROS_V = '20261142';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

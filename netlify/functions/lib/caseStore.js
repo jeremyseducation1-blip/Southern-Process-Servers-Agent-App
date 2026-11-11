@@ -78,7 +78,11 @@ async function getActivePaperByCaseAndDefendant(caseNo, defendant) {
   if (openMatch) return openMatch;
   // Nothing open -- fall back to the base id specifically, so callers get
   // a stable, predictable row rather than an arbitrary closed one.
-  return await getCase(baseId);
+  const base = await getCase(baseId);
+  if (base) return base;
+  // The case number was corrected after intake, so the id no longer matches
+  // the base id -- fall back to the newest paper for this case + defendant.
+  return sameDefendant.sort((a, b) => String(b.intakeDate || '').localeCompare(String(a.intakeDate || '')))[0] || null;
 }
 
 async function putCase(caseRecord) {

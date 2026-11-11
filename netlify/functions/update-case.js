@@ -16,15 +16,18 @@ exports.handler = requireAuth(async (event) => {
     const existing = await getCase(id);
     if (!existing) return { statusCode: 404, body: 'No case found with that id.' };
 
-    // Only these fields are editable after the fact -- case number itself
-    // is left alone here (it's just a label now, not the lookup key, but
-    // changing it wouldn't reflect in the row's id/storage paths, so it's
-    // simplest to keep it fixed and log a new paper if it was truly wrong).
-    const editable = ['courtType', 'county', 'state', 'caseType', 'plaintiff', 'defendant', 'defendants', 'serviceAddress', 'attorney', 'isAlias', 'notes', 'phoneNumbers', 'courtDate', 'issueDate'];
+    // Everything on the intake can be corrected here, including the case number.
+    const editable = ['caseNo', 'courtType', 'county', 'state', 'caseType', 'plaintiff', 'defendant', 'defendants', 'serviceAddress', 'attorney', 'isAlias', 'notes', 'phoneNumbers', 'courtDate', 'issueDate'];
     const previousCourtDate = existing.courtDate || null;
     for (const key of editable) {
       if (Object.prototype.hasOwnProperty.call(fields, key)) {
-        if (key === 'courtDate' || key === 'issueDate') {
+        if (key === 'caseNo') {
+          // Fixing a mistyped case number. The row's id stays the same on
+          // purpose, so photos, returns and PDFs filed under it stay attached.
+          const v = typeof fields[key] === 'string' ? fields[key].trim() : '';
+          if (!v) return { statusCode: 400, body: 'Case number can\'t be blank.' };
+          existing.caseNo = v;
+        } else if (key === 'courtDate' || key === 'issueDate') {
           const v = typeof fields[key] === 'string' ? fields[key].trim() : '';
           if (v && !/^\d{4}-\d{2}-\d{2}$/.test(v)) {
             return { statusCode: 400, body: `${key} must be a date (YYYY-MM-DD).` };

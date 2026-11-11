@@ -96,15 +96,15 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell #view-paperwork .card:not(.collapsed) > h2{margin-bottom:.7rem;}
 
 .app-shell .btn{
-  font-family:inherit;font-weight:700;font-size:.95rem;border-radius:12px;min-height:46px;
-  padding:.65rem 1.1rem;margin-top:.6rem;
+  font-family:inherit;font-weight:700;font-size:.85rem;border-radius:10px;min-height:38px;
+  padding:.4rem .9rem;margin-top:.5rem;
 }
 .app-shell .btn.primary{background:var(--blue);color:#fff;}
 .app-shell .btn.primary:disabled{background:#DCE4F2;color:var(--faint);}
 .app-shell .btn.secondary{background:var(--blue-soft);border-color:transparent;color:var(--blue);}
 .app-shell .btn.secondary:disabled{color:var(--faint);}
 .app-shell .btn.log-attempt-btn{
-  background:var(--yellow);color:var(--navy);font-weight:800;font-size:1.05rem;min-height:54px;border-radius:14px;
+  background:var(--yellow);color:var(--navy);font-weight:800;font-size:.95rem;min-height:42px;border-radius:12px;
 }
 .app-shell input[type=text],.app-shell input[type=date],.app-shell textarea,.app-shell select{
   font-family:inherit;font-size:1rem;border:1.5px solid var(--rule);border-radius:12px;
@@ -191,7 +191,8 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .sheet-title .t1{font-size:1.25rem;font-weight:800;letter-spacing:-.3px;}
 .app-shell .sheet-title .t2{font-size:.75rem;color:#B9C8E6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .app-shell .sheet-head .status-pill{margin:0;}
-.app-shell .sheet-head .btn{margin-top:0;width:100%;}
+.app-shell .sheet-head .btn{margin-top:0;}
+.app-shell .sheet-head .btn-row{margin-top:.1rem;}
 .app-shell .sheet-tabs{display:flex;background:#fff;border-bottom:1px solid var(--line);flex-shrink:0;}
 .app-shell .sheet-tab{
   flex:1;border:0;background:transparent;font:inherit;font-size:.85rem;font-weight:600;color:var(--faint);
@@ -211,7 +212,7 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .case-sheet[data-tab="return"] .sheet-pane[data-pane="return"],
 .app-shell .case-sheet[data-tab="notes"] .sheet-pane[data-pane="notes"],
 .app-shell .case-sheet[data-tab="papers"] .sheet-pane[data-pane="papers"]{display:flex;}
-.app-shell .sheet-pane .btn{width:100%;margin-top:0;}
+.app-shell .sheet-pane .btn{margin-top:0;align-self:flex-start;}
 .app-shell .info-card{background:#fff;border-radius:14px;padding:12px 14px;box-shadow:0 1px 4px rgba(11,42,91,.08);}
 .app-shell .info-card .k{font-size:.68rem;font-weight:800;letter-spacing:.6px;color:var(--faint);}
 .app-shell .info-card .v{font-size:.95rem;font-weight:600;margin-top:3px;word-break:break-word;}
@@ -257,7 +258,6 @@ body.app-shell [hidden]{display:none !important;}
   background:#fff;border:0;border-radius:14px;padding:12px 14px;margin:0 0 10px;
   box-shadow:0 1px 4px rgba(11,42,91,.08);
 }
-.app-shell #routeActions .btn{width:100%;}
 .app-shell #routeActions .btn.primary{background:var(--yellow);color:var(--navy);font-weight:800;}
 
 /* ---------- new case wizard ---------- */
@@ -332,3 +332,18 @@ body.app-shell [hidden]{display:none !important;}
 .app-shell .photo-cell{border:1px solid #D9DEE8;border-radius:10px;padding:4px;background:#fff;}
 .app-shell .case-photo{width:100%;aspect-ratio:1/1;object-fit:cover;border-radius:8px;display:block;}
 .app-shell .photo-meta{font-size:.72rem;color:#5B6478;padding:3px 2px 0;}
+
+/* ---------- compact button rows + "More" menu ---------- */
+.app-shell .btn-row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:.5rem;}
+.app-shell .btn-row .btn{margin-top:0;}
+.app-shell .btn-row .log-attempt-btn{flex:1 1 auto;}
+.app-shell .more-menu{margin-top:.5rem;}
+.app-shell .more-menu > summary{
+  display:inline-block;list-style:none;cursor:pointer;font-weight:700;font-size:.85rem;color:var(--blue);
+  background:var(--blue-soft);border-radius:10px;padding:.4rem .9rem;min-height:38px;line-height:28px;
+}
+.app-shell .more-menu > summary::-webkit-details-marker{display:none;}
+.app-shell .more-menu > summary::after{content:" ▾";}
+.app-shell .more-menu[open] > summary::after{content:" ▴";}
+.app-shell .more-list{display:flex;flex-direction:column;align-items:flex-start;gap:8px;margin-top:8px;}
+.app-shell .more-list .btn{margin-top:0;}

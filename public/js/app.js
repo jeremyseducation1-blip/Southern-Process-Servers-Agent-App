@@ -1357,21 +1357,24 @@
         const intake = c.intakeDate ? new Date(c.intakeDate).toLocaleDateString('en-US') : '';
         const markBtn =
           c.status !== 'closed'
-            ? `<button type="button" class="btn primary send-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Upload return &amp; send to Kevin</button>` +
-              `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}" style="margin-top:.4rem;">Mark returned (no email — already handled outside the app)</button>` +
-              `<button type="button" class="btn secondary handoff-btn" data-id="${c.id}" style="margin-top:.4rem;">Given to another agent (off my inventory, not billed)</button>`
-            : `<button type="button" class="btn secondary refile-btn" data-id="${c.id}" style="margin-top:.4rem;">Refile (reopen as a new paper)</button>`;
+            ? `<button type="button" class="btn primary send-return-btn" data-id="${c.id}">Upload return &amp; send to Kevin</button>`
+            : `<button type="button" class="btn secondary refile-btn" data-id="${c.id}">Refile (reopen as a new paper)</button>`;
+        const markMoreBtns =
+          c.status !== 'closed'
+            ? `<button type="button" class="btn secondary mark-returned-btn" data-id="${c.id}">Mark returned (no email)</button>` +
+              `<button type="button" class="btn secondary handoff-btn" data-id="${c.id}">Given to another agent (not billed)</button>`
+            : '';
         const viewReturnBtn = c.returnPdfPath
-          ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="return" style="margin-top:.4rem;">View return PDF</button>`
+          ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="return">View return PDF</button>`
           : '';
         // Fix a mistake on an already-marked return -- wrong date, wrong
         // outcome, a note that needs updating -- without re-touching
         // defendant-served status or reopening/reclosing the case.
         const editReturnBtn = (c.returnSent || c.handedOff)
-          ? `<button type="button" class="btn secondary edit-return-btn" data-id="${c.id}" style="margin-top:.4rem;">Edit return</button>`
+          ? `<button type="button" class="btn secondary edit-return-btn" data-id="${c.id}">Edit return</button>`
           : '';
         const fixPdfBtn = c.returnPdfPath
-          ? `<button type="button" class="btn secondary fix-pdf-btn" data-id="${c.id}" style="margin-top:.4rem;">Fix PDF &amp; resend to Kevin</button>`
+          ? `<button type="button" class="btn secondary fix-pdf-btn" data-id="${c.id}">Fix PDF &amp; resend to Kevin</button>`
           : '';
         const viewAffidavitBtn = c.affidavitPdfPath
           ? `<button type="button" class="btn secondary view-pdf-btn" data-id="${c.id}" data-kind="affidavit" style="margin-top:.4rem;">View affidavit PDF</button>`
@@ -1468,7 +1471,7 @@
         // no need to retype the case number/defendant up there manually.
         const addPastAttemptBtn = sortedAttempts.length >= 3
           ? ''
-          : `<button type="button" class="btn secondary add-past-attempt-btn" data-id="${c.id}" style="margin-top:.4rem;">➕ Add a missed attempt (past date, no GPS)</button>`;
+          : `<button type="button" class="btn secondary add-past-attempt-btn" data-id="${c.id}" title="Add a missed attempt (past date, no GPS)">➕ Past attempt</button>`;
         const affidavitBtn = c.isAlias
           ? `<button type="button" class="btn secondary affidavit-btn" data-id="${c.id}" style="margin-top:.4rem;">Affidavit</button>`
           : '';
@@ -1538,8 +1541,7 @@
           `<div class="sheet-top"><button type="button" class="sheet-back" aria-label="Back to cases">‹</button>` +
           `<div class="sheet-title"><div class="t1">${esc(c.defendant || 'Unknown Defendant')}</div>` +
           `<div class="t2">Case ${esc(c.caseNo || 'N/A')} · ${esc(c.plaintiff || '')}</div></div>${pill}</div>` +
-          `${logAttemptBtn}` +
-          `${addPastAttemptBtn}` +
+          ((logAttemptBtn || addPastAttemptBtn) ? `<div class="btn-row">${logAttemptBtn}${addPastAttemptBtn}</div>` : '') +
           `</div>` +
           `<div class="sheet-tabs">` +
           `<button type="button" class="sheet-tab" data-tab="info">Info</button>` +
@@ -1564,7 +1566,10 @@
           `<div class="attempt-log-form" data-attempt-form="${c.id}" hidden></div>` +
           `</div>` +
           `<div class="sheet-pane" data-pane="return">` +
-          pill + missingReturnNote + markBtn + viewReturnBtn + fixPdfBtn + editReturnBtn +
+          pill + missingReturnNote + markBtn +
+          ((markMoreBtns + viewReturnBtn + fixPdfBtn + editReturnBtn)
+            ? `<details class="more-menu"><summary>More</summary><div class="more-list">${markMoreBtns}${viewReturnBtn}${fixPdfBtn}${editReturnBtn}</div></details>`
+            : '') +
           `<div class="edit-return-form" data-edit-return-form="${c.id}" hidden></div>` +
           `</div>` +
           `<div class="sheet-pane" data-pane="papers">` +
@@ -2110,7 +2115,7 @@
         } catch (err) {
           alert('Failed — try again. (' + err.message + ')');
           btn.disabled = false;
-          btn.textContent = 'Given to another agent (off my inventory, not billed)';
+          btn.textContent = 'Given to another agent (not billed)';
         }
       });
     });
@@ -2219,7 +2224,7 @@
         } catch (err) {
           alert('Failed to update — try again. (' + err.message + ')');
           btn.disabled = false;
-          btn.textContent = 'Mark returned (no email — already handled outside the app)';
+          btn.textContent = 'Mark returned (no email)';
         }
       });
     });
@@ -3548,7 +3553,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261138';
+  const ROS_V = '20261139';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

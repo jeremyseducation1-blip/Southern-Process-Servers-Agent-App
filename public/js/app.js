@@ -990,6 +990,74 @@
     }
   }
   $('#loadContactLogBtn').addEventListener('click', renderContactLog);
+
+  // ---------- Example write-ups library ----------
+  // Starter wording to copy and adjust, plus your own saved on this phone.
+  // Examples are plain facts of what happened -- always match what really occurred.
+  (function exampleLibrary() {
+    const box = $('#exampleList');
+    if (!box) return;
+    const KEY = 'sps_examples';
+    const STARTER = [
+      ['Attempt notes', 'Left notice, no answer', 'Arrived at [time]. Knocked and announced; no answer. [Vehicle in driveway / No vehicle present]. Left yellow notice on the door with my name and phone number.'],
+      ['Attempt notes', 'Spoke to someone else', 'Arrived at [time]. Spoke with a [male/female] adult at the door who stated the defendant [is not home / does not live here / is at work]. Did not give a name. Left yellow notice with my phone number.'],
+      ['Attempt notes', 'Neighbor information', 'Arrived at [time]. No answer. Spoke with a neighbor at [address] who stated the defendant [moved out about [timeframe] ago / is rarely home / works [shift]]. Left yellow notice.'],
+      ['Attempt notes', 'Gated / locked building', 'Arrived at [time]. Unable to gain access: [gated community / locked lobby / no call box]. Called [unit/number] with no answer. Left notice at [location].'],
+      ['Attempt notes', 'Vacant / for rent', 'Arrived at [time]. Residence appears vacant: [no furniture visible / for rent sign / mail piled up / utilities off]. No one present to speak with.'],
+      ['Attempt notes', 'Phone contact', 'Called [number] at [time]. [No answer, left voicemail with my name and call-back number / Spoke with defendant, arranged to meet on [date] at [place]].'],
+      ['Return notes', 'Personally served', 'Personally served [defendant name] at [address] on [date] at [time]. Defendant confirmed identity. Papers handed directly to defendant.'],
+      ['Return notes', 'Not found — 3 attempts', 'After three diligent attempts on [date 1], [date 2], and [date 3] at [address], I was unable to locate or serve [defendant name]. [Short reason: no answer / defendant no longer lives at address / vacant]. Returned not served.'],
+      ['Return notes', 'Moved / bad address', 'Defendant no longer resides at [address]. [Current occupant / neighbor / property manager] stated defendant moved out [timeframe] ago and gave no forwarding address. Returned not served.'],
+      ['Return notes', 'Outside Davidson County', 'Defendant does not reside in Davidson County. Service address of [address] is located in [county/city]. Returned not served, outside jurisdiction.'],
+      ['Case notes', 'Defendant called back', 'Defendant called on [date]. Confirmed [address]. Will be [home / at work] at [time/date]. Meeting set for [date/time].'],
+      ['Case notes', 'Attorney instruction', '[Attorney/paralegal] asked on [date] to [hold / rush / attempt only at [address]]. Reason: [reason].']
+    ];
+    const cats = ['Attempt notes', 'Return notes', 'Case notes'];
+    const load = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } };
+    const save = (arr) => { try { localStorage.setItem(KEY, JSON.stringify(arr)); } catch (e) { /* storage blocked */ } };
+    $('#exCat').innerHTML = cats.map((c) => `<option>${c}</option>`).join('');
+
+    function render() {
+      const mine = load();
+      box.innerHTML = cats.map((cat) => {
+        const items = STARTER.filter((x) => x[0] === cat).map((x) => ({ title: x[1], text: x[2] }))
+          .concat(mine.map((m, i) => ({ ...m, idx: i })).filter((m) => m.cat === cat));
+        return `<details class="more-menu" style="margin-bottom:.4rem;"><summary>${esc(cat)} (${items.length})</summary><div class="more-list" style="width:100%;">` +
+          items.map((it) =>
+            `<div class="case-notes" style="width:100%;">` +
+            (it.title ? `<strong>${esc(it.title)}</strong><br>` : '') +
+            `<span class="ex-text">${esc(it.text)}</span><br>` +
+            `<button type="button" class="btn secondary ex-copy" style="margin-top:.4rem;">Copy</button>` +
+            (it.idx != null ? ` <button type="button" class="btn secondary ex-del" data-idx="${it.idx}" style="margin-top:.4rem;">Delete</button>` : '') +
+            `</div>`).join('') +
+          `</div></details>`;
+      }).join('');
+    }
+    box.addEventListener('click', async (e) => {
+      const copy = e.target.closest('.ex-copy');
+      const del = e.target.closest('.ex-del');
+      if (copy) {
+        const text = copy.closest('.case-notes').querySelector('.ex-text').textContent;
+        try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied ✓'; }
+        catch (err) { copy.textContent = 'Press and hold the text to copy'; }
+        setTimeout(() => { copy.textContent = 'Copy'; }, 1500);
+      } else if (del) {
+        if (!confirm('Delete this example?')) return;
+        const arr = load(); arr.splice(parseInt(del.dataset.idx, 10), 1); save(arr); render();
+      }
+    });
+    $('#exSaveBtn').addEventListener('click', () => {
+      const text = $('#exText').value.trim();
+      if (!text) return;
+      const arr = load();
+      arr.push({ cat: $('#exCat').value, title: 'My example', text });
+      save(arr);
+      $('#exText').value = '';
+      render();
+    });
+    render();
+  })();
+
   $('#contactLogSearch').addEventListener('input', () => { clearTimeout(renderContactLog.t); renderContactLog.t = setTimeout(renderContactLog, 300); });
 
   async function renderMileageList() {
@@ -3553,7 +3621,7 @@
   const rosFiles = $('#rosFiles');
   const rosStatus = $('#rosStatus');
   const rosResults = $('#rosResults');
-  const ROS_V = '20261139';
+  const ROS_V = '20261140';
   function loadScriptOnce(src) {
     return new Promise((resolve, reject) => {
       if (document.querySelector(`script[data-lib="${src}"]`)) return resolve();

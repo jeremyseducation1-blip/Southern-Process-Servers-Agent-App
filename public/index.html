@@ -5,8 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <meta name="theme-color" content="#0B2A5B">
 <title>Southern Process Servers</title>
-<link rel="stylesheet" href="/css/style.css?v=20261139">
-<link rel="stylesheet" href="/css/app-ui.css?v=20261139">
+<link rel="stylesheet" href="/css/style.css?v=20261140">
+<link rel="stylesheet" href="/css/app-ui.css?v=20261140">
 </head>
 <body class="app-shell">
 
@@ -233,6 +233,16 @@
       <button type="button" class="btn secondary" id="loadContactLogBtn">Show call &amp; text log</button>
       <div id="contactLogList"></div>
     </section>
+      <section class="card">
+      <h2>Example write-ups</h2>
+      <p class="hint">Tap Copy, paste into a note or return, then swap the [brackets] for the real details. Add your own below and they stay on this phone.</p>
+      <div id="exampleList"></div>
+      <details class="more-menu"><summary>Add your own</summary><div class="more-list" style="width:100%;">
+        <select id="exCat"></select>
+        <textarea id="exText" rows="3" placeholder="Write the example the way you want it worded" style="width:100%;"></textarea>
+        <button type="button" class="btn primary" id="exSaveBtn">Save example</button>
+      </div></details>
+    </section>
       <section class="card" id="securityCard" hidden>
       <h2>Face ID</h2>
       <p class="hint">Open the app with your face instead of typing the password. Turn it on once on each phone you use.</p>
@@ -353,10 +363,10 @@
     <button type="button" class="tab" data-view="paperwork"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/></svg><span>Paperwork</span></button>
   </nav>
 
-  <script src="/js/auth.js?v=20261139"></script>
-  <script src="/js/rosParser.js?v=20261139"></script>
-  <script src="/js/signature-pad.js?v=20261139"></script>
-  <script src="/js/priority.js?v=20261139"></script>
-  <script src="/js/app.js?v=20261139"></script>
+  <script src="/js/auth.js?v=20261140"></script>
+  <script src="/js/rosParser.js?v=20261140"></script>
+  <script src="/js/signature-pad.js?v=20261140"></script>
+  <script src="/js/priority.js?v=20261140"></script>
+  <script src="/js/app.js?v=20261140"></script>
 </body>
 </html>
